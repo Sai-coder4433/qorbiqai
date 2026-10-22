@@ -1,0 +1,23 @@
+User-agent: *
+Allow: /
+Allow: /pricing
+Allow: /terms
+Allow: /r/
+Allow: /review/
+
+# Disallow private application routes
+Disallow: /app/
+Disallow: /app/*
+Disallow: /super-admin/
+Disallow: /super-admin/*
+Disallow: /onboarding/
+Disallow: /onboarding/*
+Disallow: /crm/
+Disallow: /crm/*
+Disallow: /login
+Disallow: /signup
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /verify-email
+
+Sitemap: https://reviewflow.ai/sitemap.xml

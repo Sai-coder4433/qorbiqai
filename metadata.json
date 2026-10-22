@@ -1,0 +1,8 @@
+{
+  "name": "Remix Remix LOCALOS AI",
+  "description": "Your AI Operating System for Local Business Growth. Connect Google Business Profile, Search Console and Google Analytics to monitor visibility, manage reviews, optimize local SEO, and automate growth.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
