@@ -18,6 +18,12 @@ import { SuperAdminLayout } from './components/super-admin/SuperAdminLayout.tsx'
 // Public Pages (Section 4)
 import { LandingPage } from './pages/LandingPage.tsx';
 import { PricingPage } from './pages/PricingPage.tsx';
+import { FeaturesPage } from './pages/FeaturesPage.tsx';
+import { ContactPage } from './pages/ContactPage.tsx';
+import { TermsPage } from './pages/TermsPage.tsx';
+import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage.tsx';
+import { RefundPolicyPage } from './pages/RefundPolicyPage.tsx';
+import { SubscriptionTermsPage } from './pages/SubscriptionTermsPage.tsx';
 import { BillingReturnPage } from './pages/BillingReturnPage.tsx';
 import { LoginPage, SignupPage, ForgotPasswordPage } from './pages/fresh-test/AuthPages.tsx';
 
@@ -59,6 +65,9 @@ import { SuperAdminPlansPage } from './pages/super-admin/SuperAdminPlansPage.tsx
 import { SuperAdminDynamicQrPage } from './pages/super-admin/SuperAdminDynamicQrPage.tsx';
 import { SuperAdminAiUsagePage } from './pages/super-admin/SuperAdminAiUsagePage.tsx';
 import { SuperAdminPaymentsPage } from './pages/super-admin/SuperAdminPaymentsPage.tsx';
+import { SuperAdminInvoicesPage } from './pages/super-admin/SuperAdminInvoicesPage.tsx';
+import { SuperAdminOrdersPage } from './pages/super-admin/SuperAdminOrdersPage.tsx';
+import { StandeeShopPage } from './pages/fresh-test/StandeeShopPage.tsx';
 
 export default function App() {
   return (
@@ -70,7 +79,19 @@ export default function App() {
             {/* 1. PUBLIC ROUTES (Section 4 & 6) */}
             {/* ======================================================== */}
             <Route path="/" element={<LandingPage />} />
+            <Route path="/features" element={<FeaturesPage />} />
             <Route path="/pricing" element={<PricingPage />} />
+            <Route path="/contact" element={<ContactPage />} />
+            <Route path="/contact-us" element={<ContactPage />} />
+            <Route path="/terms" element={<TermsPage />} />
+            <Route path="/terms-and-conditions" element={<TermsPage />} />
+            <Route path="/privacy" element={<PrivacyPolicyPage />} />
+            <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+            <Route path="/refund-policy" element={<RefundPolicyPage />} />
+            <Route path="/cancellation-and-refund-policy" element={<RefundPolicyPage />} />
+            <Route path="/refund" element={<Navigate to="/refund-policy" replace />} />
+            <Route path="/subscription-terms" element={<SubscriptionTermsPage />} />
+            <Route path="/billing-info" element={<SubscriptionTermsPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signin" element={<Navigate to="/login" replace />} />
             <Route path="/sign-in" element={<Navigate to="/login" replace />} />
@@ -259,6 +280,16 @@ export default function App() {
             }
           />
           <Route
+            path="/app/standees"
+            element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <StandeeShopPage />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/app/settings"
             element={
               <ProtectedRoute>
@@ -310,6 +341,26 @@ export default function App() {
               <ProtectedRoute requireSuperAdmin={true}>
                 <SuperAdminLayout>
                   <SuperAdminSubscriptionsPage />
+                </SuperAdminLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/super-admin/invoices"
+            element={
+              <ProtectedRoute requireSuperAdmin={true}>
+                <SuperAdminLayout>
+                  <SuperAdminInvoicesPage />
+                </SuperAdminLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/super-admin/orders"
+            element={
+              <ProtectedRoute requireSuperAdmin={true}>
+                <SuperAdminLayout>
+                  <SuperAdminOrdersPage />
                 </SuperAdminLayout>
               </ProtectedRoute>
             }

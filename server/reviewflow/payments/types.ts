@@ -1,4 +1,4 @@
-export type BillingInterval = 'monthly' | 'yearly';
+export type BillingInterval = 'monthly' | 'yearly' | 'one_time';
 export type PaymentStatus = 'PENDING' | 'AUTHORIZED' | 'PAID' | 'FAILED' | 'CANCELLED' | 'REFUNDED' | 'HALTED';
 export type SubscriptionStatus = 'ACTIVE' | 'TRIALING' | 'PENDING' | 'PAUSED' | 'HALTED' | 'CANCELLED' | 'EXPIRED';
 
@@ -29,7 +29,7 @@ export interface CreateSubscriptionIntentOptions {
   customerName?: string;
   idempotencyKey?: string;
   businessName?: string;
-  billingModel?: 'SUBSCRIPTION' | 'ORDER';
+  billingModel?: 'SUBSCRIPTION' | 'ORDER' | 'STANDARD';
   returnUrl?: string;
   notes?: Record<string, string>;
 }
@@ -69,6 +69,7 @@ export interface PaymentVerificationResult {
   orderStatus?: string;
   subscriptionStatus?: string;
   providerPaymentId?: string;
+  isPending?: boolean;
 }
 
 export interface NormalizedWebhookEvent {
@@ -83,6 +84,7 @@ export interface NormalizedWebhookEvent {
   status: 'PAID' | 'FAILED' | 'HALTED' | 'CANCELLED' | 'PENDING' | 'RENEWED' | 'REFUNDED';
   refundId?: string;
   refundAmount?: number;
+  eventId?: string;
   metadata?: Record<string, any>;
 }
 
@@ -113,5 +115,6 @@ export interface IPaymentGatewayProvider {
   verifyWebhookSignature(rawBody: string | Buffer, signature: string, timestamp?: string): boolean;
   parseWebhookEvent(body: any): NormalizedWebhookEvent | null;
   processRefund(options: RefundOptions): Promise<RefundResult>;
+  cancelSubscription?(subscriptionId: string, reason?: string): Promise<{ success: boolean; error?: string; localOnly?: boolean }>;
 }
 

@@ -222,5 +222,59 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if isSuperAdmin();
     }
+
+    // =========================================================
+    // 11. INVOICES (Compliant Sequential Tax Invoices)
+    // =========================================================
+    match /invoices/{invoiceId} {
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || 
+        resource.data.customerEmail == request.auth.token.email || 
+        isSuperAdmin()
+      );
+      allow write: if isSuperAdmin();
+    }
+
+    // =========================================================
+    // 12. HARDWARE PRODUCTS & STANDEES CATALOG
+    // =========================================================
+    match /products/{productId} {
+      allow read: if isAuthenticated();
+      allow write: if isSuperAdmin();
+    }
+
+    // =========================================================
+    // 13. STANDEE PRODUCT ORDERS
+    // =========================================================
+    match /productOrders/{orderId} {
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || 
+        isSuperAdmin()
+      );
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isSuperAdmin();
+    }
+
+    // =========================================================
+    // 14. HARDWARE PRODUCT ACTIVATIONS & CHECKLISTS
+    // =========================================================
+    match /productActivations/{activationId} {
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || 
+        isSuperAdmin()
+      );
+      allow write: if isSuperAdmin();
+    }
+
+    // =========================================================
+    // 15. USER SHIPPING ADDRESSES
+    // =========================================================
+    match /shippingAddresses/{addressId} {
+      allow read, write: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || 
+        request.resource.data.userId == request.auth.uid || 
+        isSuperAdmin()
+      );
+    }
   }
 }

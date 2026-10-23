@@ -116,13 +116,43 @@ export interface QrCodeData {
 export interface SubscriptionData {
   id: string;
   ownerUid: string;
+  userId?: string;
   businessId?: string; // isolated per-business subscription link
-  planId: 'starter' | 'reviewflow_pro' | string;
+  planId: 'starter' | 'reviewflow_pro' | 'reviewflow_unlimited' | string;
   planName: string;
-  status: 'active' | 'trialing' | 'expired' | 'suspended' | 'ACTIVE' | 'SUSPENDED';
+  status:
+    | 'active'
+    | 'trialing'
+    | 'expired'
+    | 'suspended'
+    | 'ACTIVE'
+    | 'SUSPENDED'
+    | 'pending'
+    | 'authorization_pending'
+    | 'payment_failed'
+    | 'past_due'
+    | 'cancellation_pending'
+    | 'cancelled'
+    | 'PAST_DUE'
+    | 'CANCELLED';
+  price?: number;
   priceMonthly: number;
+  billingInterval?: 'monthly' | 'yearly';
   currency: string;
+  currentPeriodStart?: string;
   currentPeriodEnd: string;
+  renewalDate?: string;
+  autoRenew?: boolean;
+  renewalCount?: number;
+  cancellationDetails?: {
+    cancelledAt: string;
+    reason?: string;
+    cancelledBy?: string;
+  };
+  cashfreeSubscriptionId?: string;
+  cashfreeOrderId?: string;
+  cashfreePaymentId?: string;
+  provider?: string;
   aiGenerationsUsedThisMonth: number;
   maxQrCodes: number;
   maxAiMonthly: number;
@@ -622,6 +652,23 @@ export const freshTestApi = {
     return await parseJsonResponse(res, 'Failed to load billing history');
   },
 
+  /** Cancel recurring subscription through the application (Requirement 1, 3, 5) */
+  async cancelSubscription(params?: {
+    subscriptionId?: string;
+    reason?: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    subscription: SubscriptionData;
+  }> {
+    const res = await fetch('/api/subscriptions/cancel', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(params || {})
+    });
+    return await parseJsonResponse(res, 'Failed to cancel subscription');
+  },
+
   // Experience Topics API
   async getBusinessTopics(businessId: string): Promise<{ topics: Array<{ id: string; title: string; description: string; sortOrder: number }> }> {
     const res = await fetch(`/api/businesses/${encodeURIComponent(businessId)}/topics`, { headers: getAuthHeaders() });
@@ -868,6 +915,7 @@ export const freshTestApi = {
     iteration?: number;
     generationNumber?: number;
     requestId?: string;
+    reviewLength?: 'short' | 'medium' | 'long';
   }): Promise<{
     draft: string;
     iteration: number;
@@ -876,6 +924,7 @@ export const freshTestApi = {
     generationId?: string;
     requestId?: string;
     wordCount?: number;
+    reviewLength?: 'short' | 'medium' | 'long';
   }> {
     const payload = {
       ...params,
@@ -895,6 +944,7 @@ export const freshTestApi = {
       sessionId: data.sessionId,
       generationId: data.generationId,
       requestId: data.requestId || payload.requestId,
+      reviewLength: data.reviewLength || params.reviewLength || 'medium',
       wordCount: cleanDraft ? cleanDraft.split(/\s+/).filter(Boolean).length : 0
     };
   },
@@ -1010,22 +1060,6 @@ export const freshTestApi = {
   async getAdminClientDetail(clientId: string) {
     const res = await fetch(`/api/admin/clients/${clientId}`, { headers: getAuthHeaders() });
     return await parseJsonResponse(res, 'Failed to load client details');
-  },
-
-  async suspendClient(clientId: string) {
-    const res = await fetch(`/api/admin/clients/${clientId}/suspend`, {
-      method: 'POST',
-      headers: getAuthHeaders()
-    });
-    return await parseJsonResponse(res, 'Failed to suspend client');
-  },
-
-  async reactivateClient(clientId: string) {
-    const res = await fetch(`/api/admin/clients/${clientId}/reactivate`, {
-      method: 'POST',
-      headers: getAuthHeaders()
-    });
-    return await parseJsonResponse(res, 'Failed to reactivate client');
   },
 
   async updateClientLimits(clientId: string, limits: { maxAiMonthly?: number; maxQrCodes?: number; status?: string }) {
@@ -1297,5 +1331,248 @@ export const freshTestApi = {
     const res = await fetch('/api/crm/sales-users', { headers: getAuthHeaders() });
     const data = await parseJsonResponse(res, 'Failed to load sales users');
     return data.users || [];
+  },
+
+  // Invoices (Module 2)
+  async getAdminInvoices(params?: { search?: string; status?: string; page?: number; pageSize?: number }) {
+    const q = new URLSearchParams();
+    if (params?.search) q.set('search', params.search);
+    if (params?.status) q.set('status', params.status);
+    if (params?.page) q.set('page', String(params.page));
+    if (params?.pageSize) q.set('pageSize', String(params.pageSize));
+    const res = await fetch(`/api/admin/invoices?${q.toString()}`, { headers: getAuthHeaders() });
+    return await parseJsonResponse(res, 'Failed to load invoices');
+  },
+
+  async getAdminInvoice(id: string) {
+    const res = await fetch(`/api/admin/invoices/${id}`, { headers: getAuthHeaders() });
+    return await parseJsonResponse(res, 'Failed to load invoice');
+  },
+
+  async updateAdminInvoiceStatus(id: string, status: string, reason?: string) {
+    const res = await fetch(`/api/admin/invoices/${id}/status`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ status, reason })
+    });
+    return await parseJsonResponse(res, 'Failed to update invoice status');
+  },
+
+  async getMyInvoices(params?: { page?: number; pageSize?: number }) {
+    const q = new URLSearchParams();
+    if (params?.page) q.set('page', String(params.page));
+    if (params?.pageSize) q.set('pageSize', String(params.pageSize));
+    const res = await fetch(`/api/invoices?${q.toString()}`, { headers: getAuthHeaders() });
+    return await parseJsonResponse(res, 'Failed to load invoices');
+  },
+
+  async getMyInvoice(id: string) {
+    const res = await fetch(`/api/invoices/${id}`, { headers: getAuthHeaders() });
+    return await parseJsonResponse(res, 'Failed to load invoice');
+  },
+
+  // Products Catalogue (Module 5)
+  async getProducts() {
+    const res = await fetch('/api/products');
+    const data = await parseJsonResponse(res, 'Failed to load products');
+    return data.products || [];
+  },
+
+  async getProduct(id: string) {
+    const res = await fetch(`/api/products/${id}`);
+    const data = await parseJsonResponse(res, 'Failed to load product');
+    return data.product;
+  },
+
+  // Standee Orders (Module 5)
+  async createStandeeOrder(orderData: any) {
+    const res = await fetch('/api/orders/standee', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(orderData)
+    });
+    return await parseJsonResponse(res, 'Failed to place standee order');
+  },
+
+  async verifyStandeeOrder(orderId: string, cashfreePaymentId: string, cashfreeOrderId?: string) {
+    const res = await fetch(`/api/orders/standee/${orderId}/verify`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ cashfreePaymentId, cashfreeOrderId })
+    });
+    return await parseJsonResponse(res, 'Failed to verify standee order payment');
+  },
+
+  async getMyStandeeOrders(params?: { page?: number; pageSize?: number }) {
+    const q = new URLSearchParams();
+    if (params?.page) q.set('page', String(params.page));
+    if (params?.pageSize) q.set('pageSize', String(params.pageSize));
+    const res = await fetch(`/api/orders/standee?${q.toString()}`, { headers: getAuthHeaders() });
+    return await parseJsonResponse(res, 'Failed to load standee orders');
+  },
+
+  async getAdminOrders(params?: { search?: string; status?: string; paymentStatus?: string; page?: number; pageSize?: number }) {
+    const q = new URLSearchParams();
+    if (params?.search) q.set('search', params.search);
+    if (params?.status) q.set('status', params.status);
+    if (params?.paymentStatus) q.set('paymentStatus', params.paymentStatus);
+    if (params?.page) q.set('page', String(params.page));
+    if (params?.pageSize) q.set('pageSize', String(params.pageSize));
+    const res = await fetch(`/api/admin/orders?${q.toString()}`, { headers: getAuthHeaders() });
+    return await parseJsonResponse(res, 'Failed to load orders');
+  },
+
+  async getAdminOrder(orderId: string) {
+    const res = await fetch(`/api/admin/orders/${orderId}`, { headers: getAuthHeaders() });
+    return await parseJsonResponse(res, 'Failed to load order');
+  },
+
+  async updateAdminOrderStatus(orderId: string, status: string, note?: string) {
+    const res = await fetch(`/api/admin/orders/${orderId}/status`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ status, note })
+    });
+    return await parseJsonResponse(res, 'Failed to update order status');
+  },
+
+  async assignCourierTracking(orderId: string, trackingData: any) {
+    const res = await fetch(`/api/admin/orders/${orderId}/tracking`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(trackingData)
+    });
+    return await parseJsonResponse(res, 'Failed to assign tracking');
+  },
+
+  async cancelAdminOrder(orderId: string, reason?: string) {
+    const res = await fetch(`/api/admin/orders/${orderId}/cancel`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ reason })
+    });
+    return await parseJsonResponse(res, 'Failed to cancel order');
+  },
+
+  // Activations (Module 6)
+  async getAdminActivations(businessId?: string) {
+    const q = businessId ? `?businessId=${encodeURIComponent(businessId)}` : '';
+    const res = await fetch(`/api/admin/activations${q}`, { headers: getAuthHeaders() });
+    const data = await parseJsonResponse(res, 'Failed to load activations');
+    return data.activations || [];
+  },
+
+  async updateActivationChecklist(id: string, checklist: any) {
+    const res = await fetch(`/api/admin/activations/${id}/checklist`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(checklist)
+    });
+    return await parseJsonResponse(res, 'Failed to update activation checklist');
+  },
+
+  async recordReprint(id: string, reason: string) {
+    const res = await fetch(`/api/admin/activations/${id}/reprint`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ reason })
+    });
+    return await parseJsonResponse(res, 'Failed to record reprint request');
+  },
+
+  // Seller Profile (Module 7)
+  async getSellerSettings() {
+    const res = await fetch('/api/admin/settings/seller', { headers: getAuthHeaders() });
+    const data = await parseJsonResponse(res, 'Failed to load seller settings');
+    return data.sellerDetails;
+  },
+
+  async updateSellerSettings(sellerDetails: any) {
+    const res = await fetch('/api/admin/settings/seller', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(sellerDetails)
+    });
+    return await parseJsonResponse(res, 'Failed to update seller settings');
+  },
+
+  // Client/Business suspension with reason (Module 1)
+  async suspendClient(clientId: string, reason?: string) {
+    const res = await fetch(`/api/admin/clients/${clientId}/suspend`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ reason })
+    });
+    return await parseJsonResponse(res, 'Failed to suspend client');
+  },
+
+  async reactivateClient(clientId: string, reason?: string) {
+    const res = await fetch(`/api/admin/clients/${clientId}/reactivate`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ reason })
+    });
+    return await parseJsonResponse(res, 'Failed to reactivate client');
+  },
+
+  async suspendBusiness(businessId: string, reason?: string) {
+    const res = await fetch(`/api/admin/businesses/${businessId}/suspend`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ reason })
+    });
+    return await parseJsonResponse(res, 'Failed to suspend business');
+  },
+
+  async reactivateBusiness(businessId: string, reason?: string) {
+    const res = await fetch(`/api/admin/businesses/${businessId}/reactivate`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ reason })
+    });
+    return await parseJsonResponse(res, 'Failed to reactivate business');
+  },
+
+  // Public Compliance & Contact
+  async getPublicComplianceSettings() {
+    const res = await fetch('/api/public/compliance-settings');
+    return await parseJsonResponse(res, 'Failed to fetch compliance settings');
+  },
+
+  async submitContactForm(data: {
+    name: string;
+    email: string;
+    phone?: string;
+    businessName?: string;
+    category?: string;
+    message: string;
+    honeypot?: string;
+  }) {
+    const res = await fetch('/api/public/contact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return await parseJsonResponse(res, 'Failed to submit contact message');
+  },
+
+  // Super Admin Compliance & Cashfree Readiness
+  async getAdminComplianceSettings() {
+    const res = await fetch('/api/admin/compliance-settings', { headers: getAuthHeaders() });
+    return await parseJsonResponse(res, 'Failed to fetch admin compliance settings');
+  },
+
+  async updateAdminComplianceSettings(settings: any) {
+    const res = await fetch('/api/admin/compliance-settings', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(settings)
+    });
+    return await parseJsonResponse(res, 'Failed to update compliance settings');
+  },
+
+  async getAdminCashfreeReadinessChecklist() {
+    const res = await fetch('/api/admin/cashfree-readiness-checklist', { headers: getAuthHeaders() });
+    return await parseJsonResponse(res, 'Failed to fetch Cashfree checklist');
   }
 };

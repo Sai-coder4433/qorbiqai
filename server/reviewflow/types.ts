@@ -382,6 +382,25 @@ export interface ReviewFlowCreditPackage {
   active: boolean;
 }
 
+export type SubscriptionLifecycleStatus =
+  | 'pending'
+  | 'authorization_pending'
+  | 'active'
+  | 'payment_failed'
+  | 'past_due'
+  | 'cancellation_pending'
+  | 'cancelled'
+  | 'expired'
+  | 'PENDING'
+  | 'ACTIVE'
+  | 'PAST_DUE'
+  | 'PAUSED'
+  | 'HALTED'
+  | 'CANCELLED'
+  | 'EXPIRED'
+  | 'trialing'
+  | 'suspended';
+
 export interface ReviewFlowSubscription {
   id: string; // subscriptionId
   ownerUid: string;
@@ -390,19 +409,29 @@ export interface ReviewFlowSubscription {
   planId: 'reviewflow_unlimited' | string;
   planName: string; // 'ReviewFlow Unlimited'
   planVersion: number; // e.g. 1, 2
-  price: number; // Locked pricing for this subscription (e.g. 999 or 9999)
+  price: number; // Locked pricing for this subscription (e.g. 299 or 2999)
   billingInterval: 'monthly' | 'yearly';
   provider?: 'RAZORPAY' | 'CASHFREE' | string;
   providerSubscriptionId?: string;
-  status: 'PENDING' | 'ACTIVE' | 'PAST_DUE' | 'PAUSED' | 'HALTED' | 'CANCELLED' | 'EXPIRED' | 'active' | 'trialing' | 'expired' | 'suspended';
+  cashfreeSubscriptionId?: string;
+  cashfreeOrderId?: string;
+  cashfreePaymentId?: string;
+  status: SubscriptionLifecycleStatus;
   amount?: number;
   priceMonthly: number;
   currency: string;
   currentPeriodStart?: string;
   currentPeriodEnd: string;
+  renewalDate?: string;
   autoRenew?: boolean;
   renewalCount?: number;
   haltReason?: string;
+  cancellationDetails?: {
+    cancelledAt: string;
+    reason?: string;
+    cancelledBy?: string;
+  };
+  lastVerifiedWebhookEventId?: string;
   aiGenerationsUsedThisMonth: number;
   maxAiMonthly: number; // Unlimited logically
   maxQrCodes: number;
@@ -456,6 +485,7 @@ export interface PlanVersionRecord {
 
 export interface DynamicQrCodeRecord {
   qrId: string;
+  uniqueCode?: string;
   businessId: string;
   shopSlug: string;
   routePath: string; // e.g. /r/{businessId}/{shopSlug}/qr
@@ -555,6 +585,7 @@ export interface ReviewFlowPayment {
   refundReason?: string;
   refundAmount?: number;
   refundedAt?: string;
+  lastVerifiedWebhookEventId?: string;
   createdAt: string;
   verifiedAt?: string;
 }
@@ -596,6 +627,8 @@ export interface ReviewFlowReviewSession {
   nfcCardId?: string;
 }
 
+export type ReviewLength = 'short' | 'medium' | 'long';
+
 export interface ReviewFlowReviewGeneration {
   id: string; // primary record id
   generationId: string;
@@ -609,6 +642,7 @@ export interface ReviewFlowReviewGeneration {
   generatedText: string;
   model: string;
   wordCount?: number;
+  reviewLength?: ReviewLength;
   createdAt: string;
   status: 'SUCCESS' | 'FAILED' | 'REJECTED';
   latencyMs: number;
@@ -686,5 +720,329 @@ export interface ReviewFlowSystemSettings {
   qrEngineStatus: 'active' | 'standby';
   version: string;
   updatedAt: string;
+  sellerDetails?: SellerInvoiceProfile;
+  complianceSettings?: PublicBusinessSettings;
   [key: string]: any;
 }
+
+// ==========================================
+// SELLER & INVOICE TYPES (Module 2)
+// ==========================================
+export interface SellerInvoiceProfile {
+  legalBusinessName: string;
+  companyName?: string;
+  brandName: string;
+  registeredAddress: string;
+  address?: string;
+  city: string;
+  state: string;
+  pinCode: string;
+  supportEmail: string;
+  supportPhone: string;
+  gstin?: string;
+  pan?: string;
+  taxApplicable: boolean;
+  gstRate: number;
+  invoicePrefix: string;
+}
+
+export interface InvoiceItem {
+  description: string;
+  hsnSac?: string;
+  billingPeriod?: string;
+  quantity: number;
+  unitPrice: number;
+  amount?: number;
+  discount?: number;
+  taxableAmount?: number;
+  gstRate?: number;
+  cgstAmount?: number;
+  sgstAmount?: number;
+  igstAmount?: number;
+  totalAmount?: number;
+}
+
+export interface ReviewFlowInvoice {
+  id: string; // inv_xxx
+  invoiceNumber: string; // QOR-2026-0001
+  paymentId: string;
+  orderId?: string;
+  subscriptionId?: string;
+  userId: string;
+  businessId?: string;
+  businessName: string;
+  customerName: string;
+  customerEmail: string;
+  customerPhone?: string;
+  customerBillingAddress?: string;
+  sellerDetails: SellerInvoiceProfile;
+  invoiceDate: string;
+  paymentDate: string;
+  items: InvoiceItem[];
+  subtotal: number;
+  baseAmount?: number;
+  totalDiscount: number;
+  shippingCharge: number;
+  taxableAmount: number;
+  totalTax: number;
+  taxAmount?: number;
+  taxRate?: number;
+  cgstTotal: number;
+  sgstTotal: number;
+  igstTotal: number;
+  grandTotal: number;
+  totalAmount?: number;
+  currency: string;
+  paymentStatus: 'PAID' | 'REFUNDED' | 'CANCELLED' | 'ISSUED';
+  paymentGateway: string;
+  gateway?: string;
+  paymentReference: string;
+  transactionId?: string;
+  pdfUrl?: string;
+  notes?: string;
+  status: 'ISSUED' | 'REFUNDED' | 'CANCELLED' | 'PAID';
+  issuedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ==========================================
+// PHYSICAL STANDEE PRODUCTS & ORDERS (Module 5 & 6)
+// ==========================================
+export interface StandeeProductVariant {
+  id: string;
+  name: string;
+  sku: string;
+  price: number;
+  color?: string;
+  material?: string;
+  size?: string;
+}
+
+export interface StandeeProductCustomizationOption {
+  key: string;
+  label: string;
+  type: 'text' | 'logo_upload' | 'select';
+  required: boolean;
+  options?: string[];
+}
+
+export interface StandeeProduct {
+  id: string;
+  sku: string;
+  name: string;
+  productType: 'qr_standee' | 'nfc_standee' | 'combined_qr_nfc' | 'QR_STANDEE' | 'NFC_STANDEE' | 'COMBINED_QR_NFC';
+  description: string;
+  price: number;
+  basePrice?: number;
+  compareAtPrice?: number;
+  images: string[];
+  features: string[];
+  availableStock?: number;
+  leadTimeDays: number;
+  shippingCharge: number;
+  variants: StandeeProductVariant[];
+  customizationOptions: StandeeProductCustomizationOption[];
+  status: 'ACTIVE' | 'ARCHIVED';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type StandeeOrderStatus =
+  | 'pending_payment'
+  | 'PAYMENT_PENDING'
+  | 'payment_verified'
+  | 'confirmed'
+  | 'ORDER_CONFIRMED'
+  | 'processing'
+  | 'PROCESSING'
+  | 'awaiting_customization'
+  | 'ready_to_dispatch'
+  | 'dispatched'
+  | 'DISPATCHED'
+  | 'in_transit'
+  | 'out_for_delivery'
+  | 'OUT_FOR_DELIVERY'
+  | 'delivered'
+  | 'DELIVERED'
+  | 'cancelled'
+  | 'CANCELLED'
+  | 'refund_pending'
+  | 'refunded'
+  | 'REFUNDED'
+  | 'delivery_failed'
+  | 'DRAFT'
+  | 'PAYMENT_FAILED'
+  | 'PAID'
+  | 'IN_PRODUCTION'
+  | 'QR_GENERATED'
+  | 'NFC_ENCODED'
+  | 'QUALITY_CHECKED'
+  | 'PACKED'
+  | 'RETURNED';
+
+export interface StandeeProductOrder {
+  id: string;
+  orderNumber: string;
+  userId: string;
+  businessId: string;
+  businessName: string;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  productId: string;
+  productName: string;
+  productType: 'qr_standee' | 'nfc_standee' | 'combined_qr_nfc' | 'QR_STANDEE' | 'NFC_STANDEE' | 'COMBINED_QR_NFC';
+  variantId?: string;
+  variantName?: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+  shippingCharge: number;
+  discount: number;
+  grandTotal: number;
+  totalAmount?: number;
+  currency: string;
+  items?: any[];
+  courierProvider?: string;
+  trackingNumber?: string;
+  trackingUrl?: string;
+  customization: {
+    businessNameToPrint: string;
+    logoUrl?: string;
+    standeeColor?: string;
+    additionalNotes?: string;
+  };
+  shippingAddress: {
+    recipientName: string;
+    fullName?: string;
+    businessName: string;
+    phone: string;
+    email: string;
+    flatNo: string;
+    street: string;
+    streetAddress?: string;
+    landmark?: string;
+    area: string;
+    city: string;
+    district: string;
+    state: string;
+    pinCode: string;
+    country: string;
+    deliveryInstructions?: string;
+  };
+  paymentStatus: 'pending' | 'verified' | 'failed' | 'refunded' | 'PAID' | 'TEST_PAID';
+  cashfreeOrderId?: string;
+  cashfreePaymentId?: string;
+  cashfreePaymentSessionId?: string;
+  orderStatus: StandeeOrderStatus;
+  shippingDetails?: {
+    courierProvider?: string;
+    trackingNumber?: string;
+    trackingUrl?: string;
+    dispatchedAt?: string;
+    estimatedDeliveryDate?: string;
+    deliveredAt?: string;
+  };
+  statusHistory: Array<{
+    status: StandeeOrderStatus;
+    timestamp: string;
+    note?: string;
+    updatedBy?: string;
+  }>;
+  internalNotes?: string;
+  cancellationReason?: string;
+  refundReason?: string;
+  deliveryFailureReason?: string;
+  activationId?: string;
+  invoiceId?: string;
+  invoiceNumber?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ShippingAddressRecord {
+  id: string;
+  userId: string;
+  recipientName: string;
+  fullName?: string;
+  businessName: string;
+  phone: string;
+  email: string;
+  flatNo: string;
+  street: string;
+  streetAddress?: string;
+  landmark?: string;
+  area: string;
+  city: string;
+  district: string;
+  state: string;
+  pinCode: string;
+  country: string;
+  deliveryInstructions?: string;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProductActivationRecord {
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  businessId: string;
+  businessName: string;
+  productName?: string;
+  productType: 'qr_standee' | 'nfc_standee' | 'combined_qr_nfc' | 'QR_STANDEE' | 'NFC_STANDEE' | 'COMBINED_QR_NFC';
+  qrUniqueCode?: string;
+  qrDestinationUrl?: string;
+  destinationUrl?: string;
+  nfcDestinationUrl?: string;
+  checklist: {
+    qrPrintingCompleted: boolean;
+    nfcProgrammingCompleted: boolean;
+    qualityCheckingCompleted: boolean;
+    packingCompleted: boolean;
+  };
+  hardwareChecklist?: {
+    qrGenerated?: boolean;
+    nfcEncoded?: boolean;
+    qualityChecked?: boolean;
+    packed?: boolean;
+    [key: string]: any;
+  };
+  status: 'PENDING' | 'PROGRAMMED' | 'QUALITY_CHECKED' | 'PACKED' | 'DISPATCHED';
+  reprintHistory: Array<{
+    date: string;
+    reason: string;
+    approvedBy: string;
+    requestedAt?: string;
+  }>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PublicBusinessSettings {
+  brandName: string;
+  legalBusinessName: string;
+  supportEmail: string;
+  supportPhone?: string;
+  address: string;
+  city: string;
+  state: string;
+  pinCode: string;
+  country: string;
+  supportHours?: string;
+  websiteUrl: string;
+  businessRegistrationType?: string;
+  registrationNumber?: string;
+  gstin?: string;
+  taxApplicable: boolean;
+  gstRate: number;
+  policyEffectiveDate: string;
+  policyLastUpdated: string;
+  refundWindowDays: number;
+  slaResponseHours: number;
+  contactCategories?: string[];
+}
+
+

@@ -4,7 +4,8 @@ import {
   ReviewFlowBusiness,
   ReviewFlowReviewSession,
   ReviewFlowReviewGeneration,
-  ReviewFlowAiObservabilityMetrics
+  ReviewFlowAiObservabilityMetrics,
+  ReviewLength
 } from './types.ts';
 import { reviewFlowStore } from './store.ts';
 
@@ -296,6 +297,46 @@ export function isRepetitiveGeneration(
 }
 
 // ========================================================
+// REVIEW LENGTH TARGETS & CONSTRAINTS (Module 3)
+// Short: 1 concise sentence / 8–20 words
+// Medium: 2–3 short sentences / 25–50 words
+// Long: 4–5 short sentences / 50–90 words
+// ========================================================
+export const LENGTH_CONSTRAINTS: Record<ReviewLength, {
+  label: string;
+  sentences: string;
+  targetWords: string;
+  minTargetWords: number;
+  maxTargetWords: number;
+  guidance: string;
+}> = {
+  short: {
+    label: 'Short',
+    sentences: 'Exactly 1 concise sentence or line.',
+    targetWords: 'Approximately 8 to 20 words.',
+    minTargetWords: 6,
+    maxTargetWords: 24,
+    guidance: 'Keep it natural, direct, punchy, and easy to read. One concise sentence only.'
+  },
+  medium: {
+    label: 'Medium',
+    sentences: '2 to 3 short sentences or lines.',
+    targetWords: 'Approximately 25 to 50 words.',
+    minTargetWords: 20,
+    maxTargetWords: 60,
+    guidance: 'Balanced detail without unnecessary repetition. 2 to 3 natural sentences.'
+  },
+  long: {
+    label: 'Long',
+    sentences: '4 to 5 short sentences or lines.',
+    targetWords: 'Approximately 50 to 90 words.',
+    minTargetWords: 45,
+    maxTargetWords: 110,
+    guidance: 'More descriptive and detailed, but still completely natural and relevant.'
+  }
+};
+
+// ========================================================
 // 14. DYNAMIC PROMPT BUILDER
 // ========================================================
 export function buildDynamicPrompt(params: {
@@ -306,6 +347,7 @@ export function buildDynamicPrompt(params: {
   previousReviews: string[];
   generationNumber: number;
   requestId: string;
+  reviewLength?: ReviewLength;
   isRetry?: boolean;
 }): string {
   const previousSection = params.previousReviews.length > 0
@@ -319,6 +361,9 @@ export function buildDynamicPrompt(params: {
   const customerText = params.customerText && params.customerText.trim().length > 0
     ? params.customerText.trim()
     : 'Positive overall experience';
+
+  const lengthMode: ReviewLength = params.reviewLength || 'medium';
+  const lengthConfig = LENGTH_CONSTRAINTS[lengthMode] || LENGTH_CONSTRAINTS.medium;
 
   let prompt = `CUSTOMER EXPERIENCE:
 ${customerText}
@@ -340,6 +385,13 @@ ${params.generationNumber}
 
 UNIQUE REQUEST ID:
 ${params.requestId}
+
+REVIEW LENGTH CONTROL:
+- Target Category: ${lengthConfig.label.toUpperCase()}
+- Sentence Count Target: ${lengthConfig.sentences}
+- Word Range Target: ${lengthConfig.targetWords}
+- Style Guideline: ${lengthConfig.guidance}
+You MUST strictly follow this length constraint. If Short is requested, do NOT produce a multi-sentence essay. If Long is requested, do NOT produce a brief single sentence.
 
 VARIATION REQUIREMENT:
 Create a completely fresh version that does not copy or closely paraphrase any previous review.`;
@@ -364,6 +416,7 @@ export interface ReviewGenerationRequest {
   generationNumber?: number;
   requestId?: string;
   ipAddress?: string;
+  reviewLength?: ReviewLength;
 }
 
 export interface ReviewGenerationResult {
@@ -377,6 +430,7 @@ export interface ReviewGenerationResult {
   language: string;
   businessId: string;
   businessName: string;
+  reviewLength: ReviewLength;
   retryCount: number;
   latencyMs: number;
 }
@@ -615,6 +669,8 @@ export class AiReviewEngine {
     };
     let lastError: Error | null = null;
 
+    const lengthMode: ReviewLength = request.reviewLength || 'medium';
+
     // Up to 3 internal retries (4 total attempts)
     for (let attempt = 0; attempt <= AI_CONFIG.MAX_RETRIES; attempt++) {
       const isRetry = attempt > 0;
@@ -633,6 +689,7 @@ export class AiReviewEngine {
         previousReviews: previousDrafts,
         generationNumber,
         requestId,
+        reviewLength: lengthMode,
         isRetry
       });
 
@@ -744,6 +801,7 @@ export class AiReviewEngine {
       generatedText: finalReviewText,
       model: candidateModel,
       wordCount: finalWordCount,
+      reviewLength: lengthMode,
       status: 'SUCCESS',
       latencyMs,
       similarityCheck: lastSimilarityCheck,
@@ -776,6 +834,7 @@ export class AiReviewEngine {
       generationId: generationRecord.id,
       businessId: business.id,
       model: candidateModel,
+      reviewLength: lengthMode,
       generationNumber,
       retryAttempt,
       latencyMs,
@@ -794,6 +853,7 @@ export class AiReviewEngine {
       language: currentLang,
       businessId: business.id,
       businessName: business.businessName,
+      reviewLength: lengthMode,
       retryCount: retryAttempt,
       latencyMs
     };

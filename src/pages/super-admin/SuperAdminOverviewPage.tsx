@@ -10,15 +10,20 @@ import {
   TrendingUp,
   AlertCircle,
   RefreshCw,
-  Copy,
-  ArrowRight,
-  Eye,
-  CheckCircle2,
-  XCircle,
   Clock,
   Compass,
-  Inbox,
-  UserCheck
+  CreditCard,
+  Receipt,
+  Package,
+  Truck,
+  DollarSign,
+  AlertTriangle,
+  Radio,
+  Sliders,
+  CheckCircle2,
+  XCircle,
+  ShieldAlert,
+  ChevronRight
 } from 'lucide-react';
 import { freshTestApi } from '../../lib/fresh-test-api.ts';
 
@@ -26,6 +31,13 @@ export const SuperAdminOverviewPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [overview, setOverview] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Quick Action: Suspension Modal
+  const [suspendModalOpen, setSuspendModalOpen] = useState(false);
+  const [suspendType, setSuspendType] = useState<'user' | 'business'>('business');
+  const [targetId, setTargetId] = useState('');
+  const [suspendReason, setSuspendReason] = useState('');
+  const [suspendSubmitting, setSuspendSubmitting] = useState(false);
 
   useEffect(() => {
     loadOverview();
@@ -44,11 +56,34 @@ export const SuperAdminOverviewPage: React.FC = () => {
     }
   };
 
+  const handleExecuteSuspension = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!targetId.trim() || !suspendReason.trim()) return;
+
+    try {
+      setSuspendSubmitting(true);
+      if (suspendType === 'user') {
+        await freshTestApi.suspendClient(targetId.trim(), suspendReason.trim());
+      } else {
+        await freshTestApi.suspendBusiness(targetId.trim(), suspendReason.trim());
+      }
+      alert(`Successfully suspended ${suspendType} with recorded reason.`);
+      setSuspendModalOpen(false);
+      setTargetId('');
+      setSuspendReason('');
+      await loadOverview();
+    } catch (err: any) {
+      alert(err.message || 'Failed to execute suspension.');
+    } finally {
+      setSuspendSubmitting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="py-20 text-center space-y-3">
         <RefreshCw className="w-8 h-8 animate-spin text-blue-600 mx-auto" />
-        <p className="text-sm text-slate-500">Loading platform-wide administrative metrics...</p>
+        <p className="text-sm text-slate-500">Loading platform-wide live administrative telemetry...</p>
       </div>
     );
   }
@@ -71,27 +106,37 @@ export const SuperAdminOverviewPage: React.FC = () => {
     );
   }
 
-  const { clients, businesses, qr, ai, reviewJourney, masterCards } = overview;
-  const cards = masterCards || {
-    totalBusinesses: businesses?.total || 0,
-    activeBusinesses: businesses?.active || 0,
-    pendingOnboarding: businesses?.onboardingIncomplete || 0,
-    expiredBusinesses: 0,
-    activeSubscriptions: clients?.paid || 0,
-    monthlyRevenue: 0,
-    yearlyRevenue: 0,
-    successfulPayments: clients?.paid || 0,
-    failedPayments: 0,
-    totalAiGenerations: ai?.totalGenerations || 0,
-    totalAiRegenerations: 0,
-    totalQrCodes: qr?.activeQrCodes || 0,
-    totalQrScans: qr?.totalScans || 0,
-    totalCrmLeads: 0,
-    totalEmployees: 0,
-    estimatedAiCost: 0,
-    estimatedRevenue: 0,
-    estimatedMargin: 0
-  };
+  const {
+    totalRegisteredUsers = 0,
+    totalBusinesses = 0,
+    activeMonthlySubscriptions = 0,
+    activeYearlySubscriptions = 0,
+    pendingSubscriptions = 0,
+    failedSubscriptions = 0,
+    cancelledSubscriptions = 0,
+    expiredSubscriptions = 0,
+    monthlyRecurringRevenue = 0,
+    annualRecurringRevenue = 0,
+    annualRecurringRevenueLabel = 'Estimated Run-Rate ARR (MRR × 12)',
+    totalVerifiedPayments = 0,
+    totalVerifiedRevenue = 0,
+    standeeOrdersAwaiting = 0,
+    standeeOrdersDispatched = 0,
+    standeeOrdersDelivered = 0,
+    nfcProductsOrdered = 0,
+    totalQrCodes = 0,
+    totalAiGenerations = 0,
+    totalAiRegenerations = 0,
+    estimatedAiCost = 0,
+    aiUsageTrends = [],
+    recentTransactions = [],
+    recentActivity = [],
+    clients = {},
+    businesses = {},
+    qr = {},
+    ai = {},
+    reviewJourney = {}
+  } = overview;
 
   return (
     <div className="space-y-8">
@@ -105,7 +150,7 @@ export const SuperAdminOverviewPage: React.FC = () => {
             </span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Real-time telemetry across businesses, revenue, permanent dynamic QRs, Gemini AI cost, and customer journeys.
+            Real-time verified data across businesses, recurring revenue, standee fulfillment, dynamic QR codes, and Gemini AI.
           </p>
         </div>
         <div className="flex items-center flex-wrap gap-2">
@@ -116,368 +161,430 @@ export const SuperAdminOverviewPage: React.FC = () => {
             <RefreshCw className="w-3.5 h-3.5" />
             <span>Refresh</span>
           </button>
-          <Link
-            to="/super-admin/dynamic-qr"
-            className="px-3.5 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-bold flex items-center gap-1.5 transition-colors"
+          <button
+            onClick={() => setSuspendModalOpen(true)}
+            className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-xs font-bold text-rose-700 flex items-center gap-1.5 transition-colors cursor-pointer"
           >
-            <QrCode className="w-3.5 h-3.5" />
-            <span>Dynamic QR</span>
+            <ShieldAlert className="w-3.5 h-3.5" />
+            <span>Quick Suspend</span>
+          </button>
+          <Link
+            to="/super-admin/invoices"
+            className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors"
+          >
+            <Receipt className="w-3.5 h-3.5" />
+            <span>Invoices Ledger</span>
           </Link>
           <Link
-            to="/super-admin/ai-usage"
-            className="px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold flex items-center gap-1.5 transition-colors"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>AI Telemetry</span>
-          </Link>
-          <Link
-            to="/super-admin/plans"
+            to="/super-admin/orders"
             className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors"
           >
-            <span>ReviewFlow Unlimited</span>
+            <Package className="w-3.5 h-3.5" />
+            <span>Standee Orders</span>
           </Link>
         </div>
       </div>
 
-      {/* SECTION 4: EXACT 18 PRODUCTION DATABASE MASTER CARDS */}
+      {/* CORE REVENUE & RUN-RATE TELEMETRY */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+            <DollarSign className="w-4 h-4 text-emerald-600" />
+            <span>Subscription & Verified Revenue Telemetry</span>
+          </h2>
+          <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+            Cashfree Verified
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {/* MRR */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Monthly Recurring (MRR)</span>
+            <div className="text-3xl font-black text-slate-900 mt-2">₹{monthlyRecurringRevenue.toLocaleString()}</div>
+            <span className="text-[11px] text-slate-400 mt-1 block">Active recurring monthly revenue</span>
+          </div>
+
+          {/* ARR with explicit label */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+            <span className="text-xs font-bold text-blue-600 uppercase tracking-wider block">Annual Run-Rate (ARR)</span>
+            <div className="text-3xl font-black text-blue-600 mt-2">₹{annualRecurringRevenue.toLocaleString()}</div>
+            <span className="text-[11px] text-blue-600/80 mt-1 block font-medium">
+              {annualRecurringRevenueLabel}
+            </span>
+          </div>
+
+          {/* Total Verified Revenue */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+            <span className="text-xs font-bold text-emerald-600 uppercase tracking-wider block">Total Verified Revenue</span>
+            <div className="text-3xl font-black text-emerald-600 mt-2">₹{totalVerifiedRevenue.toLocaleString()}</div>
+            <span className="text-[11px] text-emerald-600/80 mt-1 block font-medium">
+              {totalVerifiedPayments} payments settled
+            </span>
+          </div>
+
+          {/* Standees / Hardware Revenue */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+            <span className="text-xs font-bold text-purple-600 uppercase tracking-wider block">NFC & Standee Pipeline</span>
+            <div className="text-3xl font-black text-purple-600 mt-2">{nfcProductsOrdered}</div>
+            <span className="text-[11px] text-purple-600/80 mt-1 block font-medium">
+              NFC & QR units ordered
+            </span>
+          </div>
+        </div>
+      </section>
+
+      {/* PLATFORM OPERATIONS METRICS */}
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
             <TrendingUp className="w-4 h-4 text-blue-600" />
-            <span>Executive Platform Telemetry (18 Live Metrics)</span>
+            <span>Platform Overview & Fulfillment Status</span>
           </h2>
-          <span className="text-[11px] text-slate-400 font-medium">Real-time sync</span>
+          <span className="text-[11px] text-slate-400 font-medium">Live sync</span>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3.5">
-          {/* 1. Total Businesses */}
+          {/* Registered Users */}
+          <Link to="/super-admin/clients" className="bg-white border border-slate-200 hover:border-blue-400 rounded-2xl p-4 shadow-xs transition-all block">
+            <span className="text-[11px] font-semibold text-slate-500 block">Registered Users</span>
+            <div className="text-2xl font-black text-slate-900 mt-1">{totalRegisteredUsers}</div>
+            <span className="text-[10px] text-slate-400 mt-0.5 block">Client accounts</span>
+          </Link>
+
+          {/* Businesses */}
           <Link to="/super-admin/businesses" className="bg-white border border-slate-200 hover:border-blue-400 rounded-2xl p-4 shadow-xs transition-all block">
-            <span className="text-[11px] font-semibold text-slate-500 block">Total Businesses</span>
-            <div className="text-2xl font-black text-slate-900 mt-1">{cards.totalBusinesses}</div>
-            <span className="text-[10px] text-slate-400 mt-0.5 block">Registered shops</span>
+            <span className="text-[11px] font-semibold text-slate-500 block">Total Workspaces</span>
+            <div className="text-2xl font-black text-slate-900 mt-1">{totalBusinesses}</div>
+            <span className="text-[10px] text-slate-400 mt-0.5 block">Managed businesses</span>
           </Link>
 
-          {/* 2. Active Businesses */}
-          <Link to="/super-admin/businesses" className="bg-white border border-slate-200 hover:border-emerald-400 rounded-2xl p-4 shadow-xs transition-all block">
-            <span className="text-[11px] font-semibold text-emerald-600 block">Active Businesses</span>
-            <div className="text-2xl font-black text-emerald-600 mt-1">{cards.activeBusinesses}</div>
-            <span className="text-[10px] text-emerald-600/80 mt-0.5 block">Operational</span>
-          </Link>
-
-          {/* 3. Pending Onboarding */}
-          <Link to="/super-admin/businesses" className="bg-white border border-slate-200 hover:border-amber-400 rounded-2xl p-4 shadow-xs transition-all block">
-            <span className="text-[11px] font-semibold text-amber-600 block">Pending Onboard</span>
-            <div className="text-2xl font-black text-amber-600 mt-1">{cards.pendingOnboarding}</div>
-            <span className="text-[10px] text-amber-600/80 mt-0.5 block">Setup required</span>
-          </Link>
-
-          {/* 4. Expired Businesses */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
-            <span className="text-[11px] font-semibold text-rose-600 block">Expired Businesses</span>
-            <div className="text-2xl font-black text-rose-600 mt-1">{cards.expiredBusinesses}</div>
-            <span className="text-[10px] text-slate-400 mt-0.5 block">Need renewal</span>
-          </div>
-
-          {/* 5. Active Subscriptions */}
+          {/* Monthly Subscriptions */}
           <Link to="/super-admin/subscriptions" className="bg-white border border-slate-200 hover:border-blue-400 rounded-2xl p-4 shadow-xs transition-all block">
-            <span className="text-[11px] font-semibold text-blue-600 block">Active Subscriptions</span>
-            <div className="text-2xl font-black text-blue-600 mt-1">{cards.activeSubscriptions}</div>
-            <span className="text-[10px] text-blue-600/80 mt-0.5 block">Unlimited Plan</span>
+            <span className="text-[11px] font-semibold text-blue-600 block">Active Monthly (₹299)</span>
+            <div className="text-2xl font-black text-blue-600 mt-1">{activeMonthlySubscriptions}</div>
+            <span className="text-[10px] text-blue-600/80 mt-0.5 block">Every 1 month</span>
           </Link>
 
-          {/* 6. Monthly Revenue */}
-          <Link to="/super-admin/payments" className="bg-white border border-slate-200 hover:border-indigo-400 rounded-2xl p-4 shadow-xs transition-all block">
-            <span className="text-[11px] font-semibold text-indigo-600 block">Monthly Revenue</span>
-            <div className="text-2xl font-black text-slate-900 mt-1">₹{cards.monthlyRevenue.toLocaleString()}</div>
-            <span className="text-[10px] text-indigo-600/80 mt-0.5 block">Recurring ₹999/mo</span>
+          {/* Yearly Subscriptions */}
+          <Link to="/super-admin/subscriptions" className="bg-white border border-slate-200 hover:border-blue-400 rounded-2xl p-4 shadow-xs transition-all block">
+            <span className="text-[11px] font-semibold text-indigo-600 block">Active Yearly (₹2,999)</span>
+            <div className="text-2xl font-black text-indigo-600 mt-1">{activeYearlySubscriptions}</div>
+            <span className="text-[10px] text-indigo-600/80 mt-0.5 block">Every 1 year</span>
           </Link>
 
-          {/* 7. Yearly Revenue */}
-          <Link to="/super-admin/payments" className="bg-white border border-slate-200 hover:border-indigo-400 rounded-2xl p-4 shadow-xs transition-all block">
-            <span className="text-[11px] font-semibold text-indigo-600 block">Yearly Revenue</span>
-            <div className="text-2xl font-black text-slate-900 mt-1">₹{cards.yearlyRevenue.toLocaleString()}</div>
-            <span className="text-[10px] text-indigo-600/80 mt-0.5 block">Annual ₹9999/yr</span>
+          {/* Standees Awaiting Dispatch */}
+          <Link to="/super-admin/orders" className="bg-white border border-slate-200 hover:border-amber-400 rounded-2xl p-4 shadow-xs transition-all block">
+            <span className="text-[11px] font-semibold text-amber-600 block">Awaiting Dispatch</span>
+            <div className="text-2xl font-black text-amber-600 mt-1">{standeeOrdersAwaiting}</div>
+            <span className="text-[10px] text-amber-600/80 mt-0.5 block">Standees in production</span>
           </Link>
 
-          {/* 8. Successful Payments */}
-          <Link to="/super-admin/payments" className="bg-white border border-slate-200 hover:border-emerald-400 rounded-2xl p-4 shadow-xs transition-all block">
-            <span className="text-[11px] font-semibold text-emerald-600 block">Paid Orders</span>
-            <div className="text-2xl font-black text-emerald-600 mt-1">{cards.successfulPayments}</div>
-            <span className="text-[10px] text-emerald-600/80 mt-0.5 block">Razorpay verified</span>
+          {/* Standees Dispatched */}
+          <Link to="/super-admin/orders" className="bg-white border border-slate-200 hover:border-blue-400 rounded-2xl p-4 shadow-xs transition-all block">
+            <span className="text-[11px] font-semibold text-blue-600 block">Dispatched / In Transit</span>
+            <div className="text-2xl font-black text-blue-600 mt-1">{standeeOrdersDispatched}</div>
+            <span className="text-[10px] text-blue-600/80 mt-0.5 block">With tracking link</span>
           </Link>
 
-          {/* 9. Failed Payments */}
-          <Link to="/super-admin/payments" className="bg-white border border-slate-200 hover:border-rose-400 rounded-2xl p-4 shadow-xs transition-all block">
-            <span className="text-[11px] font-semibold text-rose-600 block">Failed Payments</span>
-            <div className="text-2xl font-black text-rose-600 mt-1">{cards.failedPayments}</div>
-            <span className="text-[10px] text-slate-400 mt-0.5 block">Gateway dropped</span>
+          {/* Standees Delivered */}
+          <Link to="/super-admin/orders" className="bg-white border border-slate-200 hover:border-emerald-400 rounded-2xl p-4 shadow-xs transition-all block">
+            <span className="text-[11px] font-semibold text-emerald-600 block">Standees Delivered</span>
+            <div className="text-2xl font-black text-emerald-600 mt-1">{standeeOrdersDelivered}</div>
+            <span className="text-[10px] text-emerald-600/80 mt-0.5 block">At merchant store</span>
           </Link>
 
-          {/* 10. Total AI Generations */}
+          {/* QR Codes */}
+          <Link to="/super-admin/dynamic-qr" className="bg-white border border-slate-200 hover:border-blue-400 rounded-2xl p-4 shadow-xs transition-all block">
+            <span className="text-[11px] font-semibold text-blue-600 block">Total QR Codes</span>
+            <div className="text-2xl font-black text-blue-600 mt-1">{totalQrCodes}</div>
+            <span className="text-[10px] text-slate-400 mt-0.5 block">Permanent redirects</span>
+          </Link>
+
+          {/* AI Generations */}
           <Link to="/super-admin/ai-usage" className="bg-white border border-slate-200 hover:border-purple-400 rounded-2xl p-4 shadow-xs transition-all block">
-            <span className="text-[11px] font-semibold text-purple-600 block">Total AI Drafts</span>
-            <div className="text-2xl font-black text-purple-600 mt-1">{cards.totalAiGenerations}</div>
+            <span className="text-[11px] font-semibold text-purple-600 block">AI Drafts Generated</span>
+            <div className="text-2xl font-black text-purple-600 mt-1">{totalAiGenerations}</div>
             <span className="text-[10px] text-purple-600/80 mt-0.5 block">Punctuation-free</span>
           </Link>
 
-          {/* 11. Total AI Regenerations */}
+          {/* AI Regenerations */}
           <Link to="/super-admin/ai-usage" className="bg-white border border-slate-200 hover:border-purple-400 rounded-2xl p-4 shadow-xs transition-all block">
-            <span className="text-[11px] font-semibold text-purple-600 block">AI Regenerations</span>
-            <div className="text-2xl font-black text-purple-600 mt-1">{cards.totalAiRegenerations}</div>
-            <span className="text-[10px] text-slate-400 mt-0.5 block">Customer rewrites</span>
+            <span className="text-[11px] font-semibold text-purple-600 block">AI Rewrites</span>
+            <div className="text-2xl font-black text-purple-600 mt-1">{totalAiRegenerations}</div>
+            <span className="text-[10px] text-slate-400 mt-0.5 block">Length/vibe switches</span>
           </Link>
 
-          {/* 12. Total QR Codes */}
-          <Link to="/super-admin/dynamic-qr" className="bg-white border border-slate-200 hover:border-blue-400 rounded-2xl p-4 shadow-xs transition-all block">
-            <span className="text-[11px] font-semibold text-blue-600 block">Total QR Codes</span>
-            <div className="text-2xl font-black text-blue-600 mt-1">{cards.totalQrCodes}</div>
-            <span className="text-[10px] text-blue-600/80 mt-0.5 block">Dynamic redirects</span>
-          </Link>
-
-          {/* 13. Total QR Scans */}
-          <Link to="/super-admin/dynamic-qr" className="bg-white border border-slate-200 hover:border-blue-400 rounded-2xl p-4 shadow-xs transition-all block">
-            <span className="text-[11px] font-semibold text-blue-600 block">Total QR Scans</span>
-            <div className="text-2xl font-black text-blue-600 mt-1">{cards.totalQrScans}</div>
-            <span className="text-[10px] text-slate-400 mt-0.5 block">Physical stand scans</span>
-          </Link>
-
-          {/* 14. Total CRM Leads */}
-          <Link to="/super-admin/crm" className="bg-white border border-slate-200 hover:border-amber-400 rounded-2xl p-4 shadow-xs transition-all block">
-            <span className="text-[11px] font-semibold text-amber-600 block">Total CRM Leads</span>
-            <div className="text-2xl font-black text-amber-600 mt-1">{cards.totalCrmLeads}</div>
-            <span className="text-[10px] text-slate-400 mt-0.5 block">Sales inquiries</span>
-          </Link>
-
-          {/* 15. Total Employees */}
-          <Link to="/super-admin/employees" className="bg-white border border-slate-200 hover:border-blue-400 rounded-2xl p-4 shadow-xs transition-all block">
-            <span className="text-[11px] font-semibold text-blue-600 block">Total Employees</span>
-            <div className="text-2xl font-black text-slate-900 mt-1">{cards.totalEmployees}</div>
-            <span className="text-[10px] text-slate-400 mt-0.5 block">RBAC Staff</span>
-          </Link>
-
-          {/* 16. Estimated AI Cost */}
+          {/* Estimated AI Cost */}
           <Link to="/super-admin/ai-usage" className="bg-white border border-slate-200 hover:border-rose-400 rounded-2xl p-4 shadow-xs transition-all block">
-            <span className="text-[11px] font-semibold text-rose-600 block">Estimated AI Cost</span>
-            <div className="text-2xl font-black text-rose-600 mt-1">₹{cards.estimatedAiCost}</div>
-            <span className="text-[10px] text-slate-400 mt-0.5 block">Gemini tokens</span>
+            <span className="text-[11px] font-semibold text-rose-600 block">Gemini AI Cost</span>
+            <div className="text-2xl font-black text-rose-600 mt-1">₹{estimatedAiCost}</div>
+            <span className="text-[10px] text-slate-400 mt-0.5 block">API usage cost</span>
           </Link>
 
-          {/* 17. Estimated Revenue */}
-          <Link to="/super-admin/payments" className="bg-white border border-slate-200 hover:border-emerald-400 rounded-2xl p-4 shadow-xs transition-all block">
-            <span className="text-[11px] font-semibold text-emerald-600 block">Total Revenue</span>
-            <div className="text-2xl font-black text-emerald-600 mt-1">₹{cards.estimatedRevenue.toLocaleString()}</div>
-            <span className="text-[10px] text-emerald-600/80 mt-0.5 block">Gross billing</span>
+          {/* Invoices link */}
+          <Link to="/super-admin/invoices" className="bg-white border border-slate-200 hover:border-blue-400 rounded-2xl p-4 shadow-xs transition-all block">
+            <span className="text-[11px] font-semibold text-slate-600 block">Sequential Invoices</span>
+            <div className="text-2xl font-black text-slate-900 mt-1">{totalVerifiedPayments}</div>
+            <span className="text-[10px] text-blue-600 mt-0.5 block">QOR-2026-XXXX &rarr;</span>
           </Link>
-
-          {/* 18. Estimated Margin */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
-            <span className="text-[11px] font-semibold text-emerald-700 block">Estimated Margin</span>
-            <div className="text-2xl font-black text-emerald-700 mt-1">₹{cards.estimatedMargin.toLocaleString()}</div>
-            <span className="text-[10px] text-emerald-700/80 mt-0.5 block">Net profit</span>
-          </div>
         </div>
       </section>
 
-      {/* SECTION 8.1: Clients Cards */}
-      <section className="space-y-3">
+      {/* SUBSCRIPTION HEALTH & LIFECYCLE BREAKDOWN */}
+      <section className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
-            <Users className="w-4 h-4 text-blue-600" />
-            <span>Client Accounts</span>
+          <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+            <CreditCard className="w-4 h-4 text-blue-600" />
+            <span>Subscription Lifecycle Health & Gateway Alerts</span>
           </h2>
-          <Link to="/super-admin/clients" className="text-xs text-blue-600 hover:underline font-semibold">
-            View All Clients &rarr;
+          <Link to="/super-admin/subscriptions" className="text-xs text-blue-600 font-semibold hover:underline">
+            Manage All Subscriptions &rarr;
           </Link>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
-            <span className="text-[11px] font-semibold text-slate-500">Total Clients</span>
-            <div className="text-2xl font-black text-slate-900 mt-1">{clients.total}</div>
-          </div>
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
-            <span className="text-[11px] font-semibold text-emerald-600">Active Clients</span>
-            <div className="text-2xl font-black text-emerald-600 mt-1">{clients.active}</div>
-          </div>
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
-            <span className="text-[11px] font-semibold text-rose-600">Suspended</span>
-            <div className="text-2xl font-black text-rose-600 mt-1">{clients.suspended}</div>
-          </div>
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
-            <span className="text-[11px] font-semibold text-blue-600">New (30 Days)</span>
-            <div className="text-2xl font-black text-blue-600 mt-1">{clients.newThisMonth}</div>
-          </div>
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
-            <span className="text-[11px] font-semibold text-amber-600">Trial Clients</span>
-            <div className="text-2xl font-black text-amber-600 mt-1">{clients.trial}</div>
-          </div>
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
-            <span className="text-[11px] font-semibold text-indigo-600">Paid Clients</span>
-            <div className="text-2xl font-black text-indigo-600 mt-1">{clients.paid}</div>
-          </div>
-        </div>
-      </section>
-
-      {/* SECTION 8.2: Businesses Cards */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
-            <Building2 className="w-4 h-4 text-blue-600" />
-            <span>Businesses & Google Review Readiness</span>
-          </h2>
-          <Link to="/super-admin/businesses" className="text-xs text-blue-600 hover:underline font-semibold">
-            View All Businesses &rarr;
-          </Link>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
-            <span className="text-[11px] font-semibold text-slate-500">Total Businesses</span>
-            <div className="text-2xl font-black text-slate-900 mt-1">{businesses.total}</div>
-          </div>
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
-            <span className="text-[11px] font-semibold text-emerald-600">Active Businesses</span>
-            <div className="text-2xl font-black text-emerald-600 mt-1">{businesses.active}</div>
-          </div>
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
-            <span className="text-[11px] font-semibold text-amber-600">Onboarding Incomplete</span>
-            <div className="text-2xl font-black text-amber-600 mt-1">{businesses.onboardingIncomplete}</div>
-          </div>
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
-            <span className="text-[11px] font-semibold text-teal-600">Review URL Configured</span>
-            <div className="text-2xl font-black text-teal-600 mt-1">{businesses.googleUrlConfigured}</div>
-          </div>
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
-            <span className="text-[11px] font-semibold text-rose-600">Review URL Missing</span>
-            <div className="text-2xl font-black text-rose-600 mt-1">{businesses.googleUrlNotConfigured}</div>
-          </div>
-        </div>
-      </section>
-
-      {/* SECTION 8.3 & 8.4: QR & AI Metrics */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* QR Metrics */}
-        <section className="bg-white border border-slate-200 rounded-3xl p-6 space-y-4 shadow-xs">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
-              <QrCode className="w-4 h-4 text-emerald-600" />
-              <span>QR Stands & Scans</span>
-            </h2>
-            <span className="text-xs text-slate-400 font-mono">Platform Volume</span>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
-              <span className="text-[11px] text-slate-500">Active QR Stands</span>
-              <div className="text-xl font-black text-slate-900 mt-1">{qr.activeQrCodes}</div>
-            </div>
-            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
-              <span className="text-[11px] text-slate-500">Total Scans (All-time)</span>
-              <div className="text-xl font-black text-emerald-600 mt-1">{qr.totalScans}</div>
-            </div>
-            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
-              <span className="text-[11px] text-slate-500">Scans Today</span>
-              <div className="text-xl font-black text-blue-600 mt-1">{qr.scansToday}</div>
-            </div>
-            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
-              <span className="text-[11px] text-slate-500">Scans This Week</span>
-              <div className="text-xl font-black text-indigo-600 mt-1">{qr.scansThisWeek}</div>
-            </div>
-            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 sm:col-span-2">
-              <span className="text-[11px] text-slate-500">Scans This Month</span>
-              <div className="text-xl font-black text-indigo-600 mt-1">{qr.scansThisMonth}</div>
-            </div>
-          </div>
-        </section>
-
-        {/* AI Metrics */}
-        <section className="bg-white border border-slate-200 rounded-3xl p-6 space-y-4 shadow-xs">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-amber-500" />
-              <span>AI Review Draft Engine</span>
-            </h2>
-            <span className="text-xs text-slate-400 font-mono">Gemini 2.5 Flash</span>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
-              <span className="text-[11px] text-slate-500">Total AI Drafts</span>
-              <div className="text-xl font-black text-slate-900 mt-1">{ai.totalGenerations}</div>
-            </div>
-            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
-              <span className="text-[11px] text-slate-500">Drafts Today</span>
-              <div className="text-xl font-black text-amber-600 mt-1">{ai.generationsToday}</div>
-            </div>
-            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
-              <span className="text-[11px] text-slate-500">Drafts This Month</span>
-              <div className="text-xl font-black text-indigo-600 mt-1">{ai.generationsThisMonth}</div>
-            </div>
-            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
-              <span className="text-[11px] text-slate-500">Failed Generations</span>
-              <div className="text-xl font-black text-emerald-600 mt-1">{ai.failedGenerations}</div>
-            </div>
-            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 sm:col-span-2">
-              <span className="text-[11px] text-slate-500">Average Drafts / Client</span>
-              <div className="text-xl font-black text-blue-600 mt-1">{ai.averagePerClient} drafts</div>
-            </div>
-          </div>
-        </section>
-      </div>
-
-      {/* SECTION 8.5: Review Journey */}
-      <section className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-6 shadow-xs">
-        <div>
-          <h2 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
-            <Compass className="w-5 h-5 text-blue-600" />
-            <span>Customer Review Journey Funnel</span>
-          </h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Complete conversion sequence from initial QR scan in store to opening the direct Google Review dialogue.
-          </p>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3.5">
-          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Step 1</span>
-            <div className="text-xs font-semibold text-slate-700">QR Scans</div>
-            <div className="text-2xl font-black text-slate-900 pt-1">{reviewJourney.qrScans}</div>
-            <div className="text-[10px] text-slate-500">In-store customer scans</div>
+          <div className="bg-emerald-50/70 border border-emerald-200 p-4 rounded-2xl space-y-1">
+            <div className="flex items-center gap-1.5 text-emerald-800 text-xs font-bold">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span>Active Plans</span>
+            </div>
+            <div className="text-2xl font-black text-emerald-900">
+              {activeMonthlySubscriptions + activeYearlySubscriptions}
+            </div>
+            <div className="text-[10px] text-emerald-700">Paid & active mandates</div>
           </div>
 
-          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Step 2</span>
-            <div className="text-xs font-semibold text-slate-700">Review Page Opens</div>
-            <div className="text-2xl font-black text-blue-600 pt-1">{reviewJourney.reviewPageOpens}</div>
-            <div className="text-[10px] text-slate-500">Assistance page loaded</div>
+          <div className="bg-amber-50/70 border border-amber-200 p-4 rounded-2xl space-y-1">
+            <div className="flex items-center gap-1.5 text-amber-800 text-xs font-bold">
+              <Clock className="w-4 h-4 text-amber-600" />
+              <span>Pending</span>
+            </div>
+            <div className="text-2xl font-black text-amber-900">{pendingSubscriptions}</div>
+            <div className="text-[10px] text-amber-700">Awaiting authorization</div>
           </div>
 
-          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Step 3</span>
-            <div className="text-xs font-semibold text-slate-700">AI Draft Generations</div>
-            <div className="text-2xl font-black text-amber-600 pt-1">{reviewJourney.aiDraftGenerations}</div>
-            <div className="text-[10px] text-slate-500">Wording drafts requested</div>
+          <div className="bg-rose-50/70 border border-rose-200 p-4 rounded-2xl space-y-1">
+            <div className="flex items-center gap-1.5 text-rose-800 text-xs font-bold">
+              <AlertTriangle className="w-4 h-4 text-rose-600" />
+              <span>Failed</span>
+            </div>
+            <div className="text-2xl font-black text-rose-900">{failedSubscriptions}</div>
+            <div className="text-[10px] text-rose-700">Payment charges dropped</div>
           </div>
 
-          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Step 4</span>
-            <div className="text-xs font-semibold text-slate-700">Copy Actions</div>
-            <div className="text-2xl font-black text-indigo-600 pt-1">{reviewJourney.copyActions}</div>
-            <div className="text-[10px] text-slate-500">Copied to clipboard</div>
+          <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-1">
+            <div className="flex items-center gap-1.5 text-slate-700 text-xs font-bold">
+              <XCircle className="w-4 h-4 text-slate-500" />
+              <span>Cancelled</span>
+            </div>
+            <div className="text-2xl font-black text-slate-800">{cancelledSubscriptions}</div>
+            <div className="text-[10px] text-slate-500">Auto-renewal stopped</div>
           </div>
 
-          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-1 col-span-2 sm:col-span-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Step 5</span>
-            <div className="text-xs font-semibold text-emerald-600">Google Link Clicks</div>
-            <div className="text-2xl font-black text-emerald-600 pt-1">{reviewJourney.googleReviewLinkClicks}</div>
-            <div className="text-[10px] text-slate-500">Opened review window</div>
+          <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-1 col-span-2 sm:col-span-1">
+            <div className="flex items-center gap-1.5 text-slate-700 text-xs font-bold">
+              <Clock className="w-4 h-4 text-slate-400" />
+              <span>Expired</span>
+            </div>
+            <div className="text-2xl font-black text-slate-700">{expiredSubscriptions}</div>
+            <div className="text-[10px] text-slate-500">Grace period ended</div>
           </div>
-        </div>
-
-        <div className="p-3.5 rounded-2xl bg-blue-50/60 border border-blue-200 text-slate-600 text-xs flex items-center justify-between">
-          <span className="flex items-center gap-1.5">
-            <ShieldCheck className="w-4 h-4 text-blue-600" />
-            <span>Honest Metric Separation: Never labeled as "Reviews Received" without GBP verified publication confirmation.</span>
-          </span>
-          <span className="font-mono text-[11px] text-blue-600 font-semibold">Audit Verified</span>
         </div>
       </section>
+
+      {/* AI USAGE & 7-DAY TRENDS */}
+      {aiUsageTrends && aiUsageTrends.length > 0 && (
+        <section className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-purple-600" />
+              <span>AI Usage & Cost Trends (Last 7 Days)</span>
+            </h2>
+            <Link to="/super-admin/ai-usage" className="text-xs text-purple-600 font-semibold hover:underline">
+              View Detailed AI Telemetry &rarr;
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-7 gap-3">
+            {aiUsageTrends.map((trend: any, idx: number) => (
+              <div
+                key={idx}
+                className="bg-slate-50 p-3 rounded-2xl border border-slate-200/80 space-y-1 text-center"
+              >
+                <div className="text-[10px] font-bold text-slate-400 uppercase">
+                  {new Date(trend.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' })}
+                </div>
+                <div className="text-lg font-black text-slate-900">{trend.generations}</div>
+                <div className="text-[10px] text-slate-500">{trend.regenerations} rewrites</div>
+                <div className="text-[10px] font-semibold text-rose-600">₹{trend.estimatedCost}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* RECENT TRANSACTIONS TABLE */}
+      <section className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+            <Receipt className="w-4 h-4 text-blue-600" />
+            <span>Recent Platform Transactions (Latest 10)</span>
+          </h2>
+          <Link to="/super-admin/invoices" className="text-xs text-blue-600 font-semibold hover:underline">
+            View All Invoices &rarr;
+          </Link>
+        </div>
+
+        {recentTransactions.length === 0 ? (
+          <p className="text-xs text-slate-500 py-6 text-center">
+            No transactions recorded yet. Payments and standee orders will appear here automatically.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                <tr>
+                  <th className="py-2.5 px-3">Transaction ID</th>
+                  <th className="py-2.5 px-3">Date</th>
+                  <th className="py-2.5 px-3">Description / Plan</th>
+                  <th className="py-2.5 px-3">Amount</th>
+                  <th className="py-2.5 px-3">Gateway</th>
+                  <th className="py-2.5 px-3">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {recentTransactions.map((tx: any, idx: number) => (
+                  <tr key={tx.id || idx} className="hover:bg-slate-50/70 transition-colors">
+                    <td className="py-3 px-3 font-mono font-medium text-blue-600">
+                      {tx.id}
+                    </td>
+                    <td className="py-3 px-3 text-slate-500 whitespace-nowrap">
+                      {tx.timestamp ? new Date(tx.timestamp).toLocaleString('en-IN') : 'Recent'}
+                    </td>
+                    <td className="py-3 px-3 font-semibold text-slate-900">
+                      {tx.plan || tx.description || 'Subscription'}
+                    </td>
+                    <td className="py-3 px-3 font-bold text-slate-900">
+                      ₹{tx.amount}
+                    </td>
+                    <td className="py-3 px-3">
+                      <span className="font-mono text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded">
+                        {tx.gateway || 'CASHFREE'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
+                          tx.status === 'SUCCESS' || tx.status === 'PAID'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-rose-50 text-rose-700 border border-rose-200'
+                        }`}
+                      >
+                        {tx.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* SUSPENSION QUICK-ACTION MODAL */}
+      {suspendModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <form
+            onSubmit={handleExecuteSuspension}
+            className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0">
+                <ShieldAlert className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-slate-900">Suspend Account or Business</h3>
+                <span className="text-xs text-slate-500">Recorded audit justification required</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">Target Type</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSuspendType('business')}
+                  className={`flex-1 py-2 text-xs font-bold rounded-xl border cursor-pointer ${
+                    suspendType === 'business'
+                      ? 'bg-rose-50 border-rose-300 text-rose-700'
+                      : 'bg-slate-50 border-slate-200 text-slate-600'
+                  }`}
+                >
+                  Business Workspace
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSuspendType('user')}
+                  className={`flex-1 py-2 text-xs font-bold rounded-xl border cursor-pointer ${
+                    suspendType === 'user'
+                      ? 'bg-rose-50 border-rose-300 text-rose-700'
+                      : 'bg-slate-50 border-slate-200 text-slate-600'
+                  }`}
+                >
+                  Client User Account
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">
+                {suspendType === 'business' ? 'Business ID' : 'Client User ID'}{' '}
+                <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={targetId}
+                onChange={(e) => setTargetId(e.target.value)}
+                placeholder={suspendType === 'business' ? 'e.g. biz_...' : 'e.g. usr_... or client ID'}
+                required
+                className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500 font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">
+                Mandatory Suspension Reason <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                value={suspendReason}
+                onChange={(e) => setSuspendReason(e.target.value)}
+                placeholder="Explain violation, chargeback fraud, or reason for suspension..."
+                required
+                rows={3}
+                className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setSuspendModalOpen(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={suspendSubmitting || !targetId.trim() || !suspendReason.trim()}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                {suspendSubmitting ? 'Suspending...' : 'Confirm Suspension'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 };

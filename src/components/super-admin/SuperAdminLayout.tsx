@@ -19,6 +19,7 @@ import {
   UserCheck,
   QrCode,
   Cpu,
+  Package,
   Receipt,
   Layers,
   Settings as SettingsIcon,
@@ -41,7 +42,6 @@ export const SuperAdminLayout: React.FC<SuperAdminLayoutProps> = ({ children }) 
     navigate('/super-admin/login');
   };
 
-  // SECTION 3: EXACT 12 SUPER ADMIN SIDEBAR SECTIONS
   const navItems = [
     {
       label: 'Dashboard',
@@ -62,9 +62,21 @@ export const SuperAdminLayout: React.FC<SuperAdminLayoutProps> = ({ children }) 
       active: location.pathname === '/super-admin/subscriptions'
     },
     {
+      label: 'Invoices',
+      path: '/super-admin/invoices',
+      icon: Receipt,
+      active: location.pathname === '/super-admin/invoices'
+    },
+    {
+      label: 'Standee Orders',
+      path: '/super-admin/orders',
+      icon: Package,
+      active: location.pathname === '/super-admin/orders'
+    },
+    {
       label: 'Payments',
       path: '/super-admin/payments',
-      icon: Receipt,
+      icon: CreditCard,
       active: location.pathname === '/super-admin/payments'
     },
     {

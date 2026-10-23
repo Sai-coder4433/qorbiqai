@@ -186,21 +186,41 @@ class FirebaseSyncService {
       }
     }
 
-    // 4. Sync Subscriptions
+    // 4. Sync Subscriptions (Requirement 4: 14 mandatory fields)
     for (const s of (rawData.subscriptions || [])) {
       try {
         const sRef = doc(db, 'subscriptions', s.id);
         await setDoc(sRef, {
           id: s.id,
+          subscriptionId: s.id,
+          userId: s.userId || s.ownerUid,
           ownerUid: s.ownerUid,
           businessId: s.businessId || null,
           planId: s.planId,
           planName: s.planName,
+          planVersion: s.planVersion || 1,
+          billingInterval: s.billingInterval || 'monthly',
+          planPrice: s.price,
+          price: s.price,
+          priceMonthly: s.priceMonthly || s.price,
+          currency: s.currency || 'INR',
+          provider: s.provider || 'CASHFREE',
+          cashfreeSubscriptionId: s.cashfreeSubscriptionId || s.providerSubscriptionId || null,
+          cashfreeOrderId: s.cashfreeOrderId || null,
+          cashfreePaymentId: s.cashfreePaymentId || null,
+          verifiedPaymentStatus: s.paymentStatus || 'paid',
+          paymentStatus: s.paymentStatus || 'paid',
           status: s.status || 'active',
-          priceMonthly: s.priceMonthly || 0,
+          subscriptionCreationDate: s.createdAt || new Date().toISOString(),
+          currentPeriodStart: s.currentPeriodStart || null,
+          currentPeriodEnd: s.currentPeriodEnd,
+          renewalDate: s.renewalDate || s.currentPeriodEnd || null,
+          autoRenew: Boolean(s.autoRenew),
+          renewalCount: s.renewalCount || 0,
+          cancellationDetails: s.cancellationDetails || null,
+          lastVerifiedWebhookEventId: s.lastVerifiedWebhookEventId || null,
           creditsRemaining: s.creditsRemaining || 0,
           creditsUsed: s.creditsUsed || 0,
-          currency: s.currency || 'INR',
           createdAt: s.createdAt || new Date().toISOString(),
           updatedAt: s.updatedAt || new Date().toISOString()
         }, { merge: true });
@@ -210,31 +230,41 @@ class FirebaseSyncService {
       }
     }
 
-    // 4b. Sync Payments to Firestore
+    // 4b. Sync Payments to Firestore (Requirement 4)
     for (const p of (rawData.payments || [])) {
       try {
         const pRef = doc(db, 'payments', p.id);
         await setDoc(pRef, {
           id: p.id,
+          paymentId: p.id,
           userId: p.userId,
           businessId: p.businessId || null,
           subscriptionId: p.subscriptionId,
           amount: p.amount,
+          planPrice: p.amount,
           currency: p.currency || 'INR',
           status: p.status,
+          verifiedPaymentStatus: p.status,
           paymentType: p.paymentType,
           planId: p.planId,
           billingInterval: p.billingInterval || 'monthly',
           planVersion: p.planVersion || 1,
-          gateway: p.gateway || 'RAZORPAY',
+          gateway: p.gateway || 'CASHFREE',
+          cashfreeOrderId: p.cashfreeOrderId || null,
+          cashfreePaymentId: p.cashfreePaymentId || null,
+          cashfreeSubscriptionId: p.cashfreeSubscriptionId || null,
+          cashfreePaymentSessionId: p.cashfreePaymentSessionId || null,
+          cashfreeAuthLink: p.cashfreeAuthLink || null,
           razorpayOrderId: p.razorpayOrderId || null,
           razorpayPaymentId: p.razorpayPaymentId || null,
           razorpaySubscriptionId: p.razorpaySubscriptionId || null,
           refundId: p.refundId || null,
           refundReason: p.refundReason || null,
           refundedAt: p.refundedAt || null,
+          lastVerifiedWebhookEventId: p.lastVerifiedWebhookEventId || null,
           createdAt: p.createdAt || new Date().toISOString(),
-          verifiedAt: p.verifiedAt || null
+          verifiedAt: p.verifiedAt || null,
+          updatedAt: new Date().toISOString()
         }, { merge: true });
         synced.payments = (synced.payments || 0) + 1;
       } catch (err: any) {
@@ -422,7 +452,7 @@ class FirebaseSyncService {
     };
   }
 
-  /** Real-time sync of an individual payment record to Firestore */
+  /** Real-time sync of an individual payment record to Firestore (Requirement 4) */
   public async syncPaymentDoc(payment: any): Promise<void> {
     try {
       if (!this.db) this.init();
@@ -431,36 +461,42 @@ class FirebaseSyncService {
       const pRef = doc(this.db, 'payments', payment.id);
       await setDoc(pRef, {
         id: payment.id,
+        paymentId: payment.id,
         userId: payment.userId,
         businessId: payment.businessId || null,
         subscriptionId: payment.subscriptionId,
         amount: payment.amount,
+        planPrice: payment.amount,
         currency: payment.currency || 'INR',
         status: payment.status,
+        verifiedPaymentStatus: payment.status,
         paymentType: payment.paymentType,
         planId: payment.planId,
         billingInterval: payment.billingInterval || 'monthly',
         planVersion: payment.planVersion || 1,
-        gateway: payment.gateway || 'RAZORPAY',
-        razorpayOrderId: payment.razorpayOrderId || null,
-        razorpayPaymentId: payment.razorpayPaymentId || null,
-        razorpaySubscriptionId: payment.razorpaySubscriptionId || null,
+        gateway: payment.gateway || 'CASHFREE',
         cashfreeOrderId: payment.cashfreeOrderId || null,
         cashfreePaymentId: payment.cashfreePaymentId || null,
         cashfreeSubscriptionId: payment.cashfreeSubscriptionId || null,
         cashfreePaymentSessionId: payment.cashfreePaymentSessionId || null,
+        cashfreeAuthLink: payment.cashfreeAuthLink || null,
+        razorpayOrderId: payment.razorpayOrderId || null,
+        razorpayPaymentId: payment.razorpayPaymentId || null,
+        razorpaySubscriptionId: payment.razorpaySubscriptionId || null,
         refundId: payment.refundId || null,
         refundReason: payment.refundReason || null,
         refundedAt: payment.refundedAt || null,
+        lastVerifiedWebhookEventId: payment.lastVerifiedWebhookEventId || null,
         createdAt: payment.createdAt || new Date().toISOString(),
-        verifiedAt: payment.verifiedAt || null
+        verifiedAt: payment.verifiedAt || null,
+        updatedAt: new Date().toISOString()
       }, { merge: true });
     } catch (err: any) {
       console.warn(`[FirebaseSyncService] Failed to sync payment ${payment.id}:`, err.message);
     }
   }
 
-  /** Real-time sync of an individual subscription record to Firestore */
+  /** Real-time sync of an individual subscription record to Firestore (Requirement 4: 14 mandatory fields) */
   public async syncSubscriptionDoc(subscription: any): Promise<void> {
     try {
       if (!this.db) this.init();
@@ -469,26 +505,55 @@ class FirebaseSyncService {
       const sRef = doc(this.db, 'subscriptions', subscription.id);
       await setDoc(sRef, {
         id: subscription.id,
+        subscriptionId: subscription.id,
+        userId: subscription.userId || subscription.ownerUid,
         ownerUid: subscription.ownerUid,
         businessId: subscription.businessId || null,
         planId: subscription.planId,
         planName: subscription.planName,
         planVersion: subscription.planVersion || 1,
-        status: subscription.status || 'ACTIVE',
         billingInterval: subscription.billingInterval || 'monthly',
+        planPrice: subscription.price,
         price: subscription.price,
         priceMonthly: subscription.priceMonthly || subscription.price,
         currency: subscription.currency || 'INR',
-        provider: subscription.provider || 'RAZORPAY',
+        provider: subscription.provider || 'CASHFREE',
+        cashfreeSubscriptionId: subscription.cashfreeSubscriptionId || subscription.providerSubscriptionId || null,
+        cashfreeOrderId: subscription.cashfreeOrderId || null,
+        cashfreePaymentId: subscription.cashfreePaymentId || null,
+        verifiedPaymentStatus: subscription.paymentStatus || 'paid',
+        paymentStatus: subscription.paymentStatus || 'paid',
+        status: subscription.status || 'active',
+        subscriptionCreationDate: subscription.createdAt || new Date().toISOString(),
         currentPeriodStart: subscription.currentPeriodStart || null,
         currentPeriodEnd: subscription.currentPeriodEnd,
+        renewalDate: subscription.renewalDate || subscription.currentPeriodEnd || null,
         autoRenew: Boolean(subscription.autoRenew),
         renewalCount: subscription.renewalCount || 0,
+        cancellationDetails: subscription.cancellationDetails || null,
+        lastVerifiedWebhookEventId: subscription.lastVerifiedWebhookEventId || null,
         createdAt: subscription.createdAt || new Date().toISOString(),
         updatedAt: subscription.updatedAt || new Date().toISOString()
       }, { merge: true });
     } catch (err: any) {
       console.warn(`[FirebaseSyncService] Failed to sync subscription ${subscription.id}:`, err.message);
+    }
+  }
+
+  /** Generic real-time sync of an individual record to Firestore (supports 2 or 3 arguments) */
+  public async syncRecord(colName: string, docIdOrData: any, maybeData?: any): Promise<void> {
+    try {
+      await this.ensureAuth();
+      if (!this.db) return;
+      const docId = maybeData ? String(docIdOrData) : String(docIdOrData?.id || docIdOrData?.uid || docIdOrData?.orderId || docIdOrData?.key || 'default');
+      const data = maybeData !== undefined ? maybeData : docIdOrData;
+      const ref = doc(this.db, colName, docId);
+      await setDoc(ref, {
+        ...data,
+        _syncedAt: serverTimestamp()
+      }, { merge: true });
+    } catch (err: any) {
+      console.warn(`[FirebaseSyncService] syncRecord ${colName} notice:`, err.message);
     }
   }
 }

@@ -37,10 +37,10 @@ export const BusinessesPage: React.FC = () => {
     discount: number;
     features: string[];
   }>({
-    monthlyPrice: 999,
-    yearlyPrice: 9999,
+    monthlyPrice: 299,
+    yearlyPrice: 2999,
     currency: 'INR',
-    discount: 17,
+    discount: 16.4,
     features: ['Unlimited AI Review Generations', 'Permanent Dynamic QR Redirect', 'HD QR & NFC Support']
   });
 

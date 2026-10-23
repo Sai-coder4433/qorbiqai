@@ -33,6 +33,7 @@ export const CustomerReviewPage: React.FC = () => {
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
   const [customerText, setCustomerText] = useState('');
   const [selectedLanguage, setSelectedLanguage] = useState('English');
+  const [reviewLength, setReviewLength] = useState<'short' | 'medium' | 'long'>('medium');
 
   // Generation & Draft State
   const [generating, setGenerating] = useState(false);
@@ -141,6 +142,7 @@ export const CustomerReviewPage: React.FC = () => {
         selectedTopics: selectedTitles,
         selectedExperienceCards: selectedTitles,
         language: selectedLanguage,
+        reviewLength,
         businessName: businessInfo?.businessName || '',
         businessId: businessInfo?.id,
         uniqueCode: activeCode,
@@ -413,6 +415,44 @@ export const CustomerReviewPage: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Review Length Selector (Module 3) */}
+                <div className="space-y-1.5 pt-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-semibold text-slate-700">
+                      Review Length
+                    </label>
+                    <span className="text-[11px] text-slate-500 font-medium">
+                      {reviewLength === 'short' && '1 sentence (8–20 words)'}
+                      {reviewLength === 'medium' && '2–3 sentences (25–50 words)'}
+                      {reviewLength === 'long' && '4–5 sentences (50–90 words)'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: 'short' as const, label: 'Short', desc: '1 sentence' },
+                      { id: 'medium' as const, label: 'Medium', desc: '2–3 sentences' },
+                      { id: 'long' as const, label: 'Long', desc: '4–5 sentences' }
+                    ].map((l) => (
+                      <button
+                        key={l.id}
+                        type="button"
+                        id={`lengthBtn_${l.id}`}
+                        onClick={() => setReviewLength(l.id)}
+                        className={`py-2 px-2.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
+                          reviewLength === l.id
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+                        }`}
+                      >
+                        <span className="text-xs font-bold leading-tight">{l.label}</span>
+                        <span className={`text-[10px] mt-0.5 ${reviewLength === l.id ? 'text-blue-100' : 'text-slate-400'}`}>
+                          {l.desc}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Error Alert */}
                 {generationError && (
                   <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2.5">
@@ -459,13 +499,45 @@ export const CustomerReviewPage: React.FC = () => {
                     Crafted from your experience. You can edit before copying.
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center flex-wrap gap-1.5 justify-end">
                   <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
                     Draft #{generationNumber}
+                  </span>
+                  <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 capitalize">
+                    {reviewLength} ({reviewLength === 'short' ? '8–20 words' : reviewLength === 'medium' ? '25–50 words' : '50–90 words'})
                   </span>
                   <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">
                     {calculateWords(generatedDraft)} words
                   </span>
+                </div>
+              </div>
+
+              {/* Adjust Review Length (Module 3) */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-slate-700">Change Review Length:</span>
+                  <span className="text-[11px] text-slate-500">
+                    {reviewLength === 'short' && '1 sentence (8–20 words)'}
+                    {reviewLength === 'medium' && '2–3 sentences (25–50 words)'}
+                    {reviewLength === 'long' && '4–5 sentences (50–90 words)'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['short', 'medium', 'long'] as const).map(len => (
+                    <button
+                      key={len}
+                      type="button"
+                      id={`outputLengthBtn_${len}`}
+                      onClick={() => setReviewLength(len)}
+                      className={`py-1.5 px-2 rounded-lg text-xs font-semibold capitalize transition-all cursor-pointer ${
+                        reviewLength === len
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
+                      }`}
+                    >
+                      {len}
+                    </button>
+                  ))}
                 </div>
               </div>
 

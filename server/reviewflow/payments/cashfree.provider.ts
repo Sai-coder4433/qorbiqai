@@ -211,7 +211,7 @@ export class CashfreeProvider implements IPaymentGatewayProvider {
       appBaseUrl: string;
     }
   ): Promise<PaymentIntentResult> {
-    const planId = `qorbiq_${options.planId}_${options.billingInterval}`.substring(0, 40);
+    const planId = `qorbiq_${options.planId}_${options.billingInterval}_${Math.round(options.amount)}`.substring(0, 40);
 
     // 1. Ensure Plan exists or create it
     try {
@@ -220,7 +220,7 @@ export class CashfreeProvider implements IPaymentGatewayProvider {
         headers: this.getHeaders(),
         body: JSON.stringify({
           plan_id: planId,
-          plan_name: `Qorbiq AI Unlimited ${options.billingInterval === 'yearly' ? 'Yearly' : 'Monthly'}`,
+          plan_name: options.billingInterval === 'yearly' ? 'Qorbiq AI Yearly Plan' : 'Qorbiq AI Monthly Plan',
           plan_type: 'PERIODIC',
           plan_currency: options.currency || 'INR',
           plan_recurring_amount: Math.round(options.amount * 100) / 100,
@@ -228,7 +228,9 @@ export class CashfreeProvider implements IPaymentGatewayProvider {
           plan_max_cycles: options.billingInterval === 'yearly' ? 10 : 120,
           plan_intervals: 1,
           plan_interval_type: options.billingInterval === 'yearly' ? 'YEAR' : 'MONTH',
-          plan_note: `Qorbiq AI Subscription recurring ${options.billingInterval}`
+          plan_note: options.billingInterval === 'yearly'
+            ? 'Qorbiq AI Yearly Subscription (₹2,999/yr)'
+            : 'Qorbiq AI Monthly Subscription (₹299/mo)'
         })
       });
       if (!planRes.ok && planRes.status !== 409) {
@@ -295,8 +297,56 @@ export class CashfreeProvider implements IPaymentGatewayProvider {
   }
 
   /**
+   * Cancel Subscription on Cashfree
+   * Official Cashfree Subscriptions manage endpoint: POST /pg/subscriptions/{id}/manage with action CANCEL
+   */
+  public async cancelSubscription(
+    subscriptionId: string,
+    reason = 'Customer requested cancellation'
+  ): Promise<{ success: boolean; error?: string; localOnly?: boolean }> {
+    const appId = this.getAppId();
+    if (!appId || appId.includes('your_cashfree_app_id') || appId === 'placeholder') {
+      return { success: true, localOnly: true };
+    }
+
+    try {
+      const response = await fetch(`${this.getBaseUrl()}/pg/subscriptions/${subscriptionId}/manage`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({
+          subscription_id: subscriptionId,
+          action: 'CANCEL'
+        })
+      });
+
+      const data: any = await response.json().catch(() => ({}));
+
+      if (!response.ok && response.status !== 200) {
+        // Fallback to legacy endpoint if manage route is unsupported
+        const altRes = await fetch(`${this.getBaseUrl()}/pg/subscriptions/${subscriptionId}/cancel`, {
+          method: 'POST',
+          headers: this.getHeaders(),
+          body: JSON.stringify({ cancel_reason: reason })
+        });
+        if (!altRes.ok) {
+          const altData = await altRes.json().catch(() => ({}));
+          return {
+            success: false,
+            error: data.message || altData.message || `Cashfree subscription cancel failed with status ${response.status}`
+          };
+        }
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
    * Step 2: Server-side Verification of Payment/Order or Subscription
-   * Queries Cashfree API directly to prevent trusting client-side parameters
+   * Queries Cashfree API directly to prevent trusting client-side parameters.
+   * Does NOT assume successful authorization always means payment collected.
    */
   public async verifyPaymentSignature(
     params: VerifyPaymentParams
@@ -317,14 +367,58 @@ export class CashfreeProvider implements IPaymentGatewayProvider {
         if (subRes.ok) {
           const subData: any = await subRes.json();
           const subStatus = (subData.subscription_status || '').toUpperCase();
-          if (subStatus === 'ACTIVE' || subStatus === 'INITIALIZED' || subStatus === 'BANK_APPROVAL_PENDING') {
+
+          if (subStatus === 'INITIALIZED' || subStatus === 'BANK_APPROVAL_PENDING') {
             return {
-              valid: true,
+              valid: false,
+              isPending: true,
               subscriptionStatus: subStatus,
-              providerPaymentId: subData.subscription_id
+              error: `Subscription mandate is ${subStatus === 'INITIALIZED' ? 'pending customer authorization' : 'undergoing bank processing'}. Recurring payment not yet collected.`
             };
           }
-          if (subStatus === 'CANCELLED' || subStatus === 'FAILED') {
+
+          if (subStatus === 'ACTIVE') {
+            // Check if initial payment has been collected
+            let isPaymentCollected = false;
+            let collectedPaymentId = subData.subscription_id;
+            try {
+              const paymentsRes = await fetch(`${this.getBaseUrl()}/pg/subscriptions/${subscriptionId}/payments`, {
+                method: 'GET',
+                headers: this.getHeaders()
+              });
+              if (paymentsRes.ok) {
+                const paymentsList: any[] = await paymentsRes.json();
+                if (Array.isArray(paymentsList)) {
+                  const successfulPayment = paymentsList.find(
+                    p => (p.payment_status || p.status || '').toUpperCase() === 'SUCCESS'
+                  );
+                  if (successfulPayment) {
+                    isPaymentCollected = true;
+                    collectedPaymentId = String(successfulPayment.cf_payment_id || successfulPayment.payment_id || collectedPaymentId);
+                  }
+                }
+              }
+            } catch (payErr: any) {
+              console.warn('[CashfreeProvider] Subscription payments fetch warning:', payErr.message);
+            }
+
+            if (isPaymentCollected) {
+              return {
+                valid: true,
+                subscriptionStatus: 'ACTIVE',
+                providerPaymentId: collectedPaymentId
+              };
+            }
+
+            return {
+              valid: false,
+              isPending: true,
+              subscriptionStatus: 'ACTIVE',
+              error: 'Mandate is active, but initial payment collection is pending confirmation from bank.'
+            };
+          }
+
+          if (subStatus === 'CANCELLED' || subStatus === 'FAILED' || subStatus === 'ON_HOLD') {
             return {
               valid: false,
               subscriptionStatus: subStatus,
@@ -340,7 +434,6 @@ export class CashfreeProvider implements IPaymentGatewayProvider {
     // 2. Verify via Order if orderId provided
     if (orderId) {
       try {
-        // Fetch order details from Cashfree
         const orderRes = await fetch(`${this.getBaseUrl()}/pg/orders/${orderId}`, {
           method: 'GET',
           headers: this.getHeaders()
@@ -358,7 +451,6 @@ export class CashfreeProvider implements IPaymentGatewayProvider {
         const orderStatus = (orderData.order_status || '').toUpperCase();
 
         if (orderStatus === 'PAID') {
-          // Fetch payments for this order to retrieve specific cf_payment_id
           let cfPaymentId = params.cfPaymentId || params.providerPaymentId;
           try {
             const paymentsRes = await fetch(`${this.getBaseUrl()}/pg/orders/${orderId}/payments`, {
@@ -367,11 +459,13 @@ export class CashfreeProvider implements IPaymentGatewayProvider {
             });
             if (paymentsRes.ok) {
               const paymentsData: any[] = await paymentsRes.json();
-              const successfulPayment = paymentsData.find(
-                p => (p.payment_status || '').toUpperCase() === 'SUCCESS'
-              );
-              if (successfulPayment) {
-                cfPaymentId = String(successfulPayment.cf_payment_id || successfulPayment.payment_id);
+              if (Array.isArray(paymentsData)) {
+                const successfulPayment = paymentsData.find(
+                  p => (p.payment_status || '').toUpperCase() === 'SUCCESS'
+                );
+                if (successfulPayment) {
+                  cfPaymentId = String(successfulPayment.cf_payment_id || successfulPayment.payment_id);
+                }
               }
             }
           } catch {
@@ -395,6 +489,7 @@ export class CashfreeProvider implements IPaymentGatewayProvider {
 
         return {
           valid: false,
+          isPending: orderStatus === 'ACTIVE',
           orderStatus,
           error: `Order status is "${orderStatus}". Payment is not yet completed.`
         };
@@ -471,6 +566,7 @@ export class CashfreeProvider implements IPaymentGatewayProvider {
 
     const eventType = body.type || body.event || '';
     const data = body.data || body;
+    const eventId = String(body.event_id || data.event_id || body.event_time || (eventType + '_' + (data.order?.order_id || data.subscription?.subscription_id || Date.now())));
 
     // 1. Payment Success
     if (
@@ -484,6 +580,7 @@ export class CashfreeProvider implements IPaymentGatewayProvider {
         provider: 'CASHFREE',
         eventType,
         rawEvent: eventType,
+        eventId,
         orderId: order.order_id,
         paymentId: payment.cf_payment_id ? String(payment.cf_payment_id) : undefined,
         amount: Number(order.order_amount || payment.payment_amount || 0),
@@ -493,22 +590,49 @@ export class CashfreeProvider implements IPaymentGatewayProvider {
       };
     }
 
-    // 2. Subscription Status Change
+    // 2. Subscription Payment Success (Recurring Renewal Debit)
+    if (
+      eventType === 'SUBSCRIPTION_PAYMENT_SUCCESS_WEBHOOK' ||
+      eventType === 'SUBSCRIPTION_PAYMENT_SUCCESS'
+    ) {
+      const sub = data.subscription || data;
+      const payment = data.payment || {};
+      const resolvedPaymentId = payment.cf_payment_id || data.cf_payment_id || payment.payment_id || data.payment_id;
+      const resolvedAmount = payment.payment_amount ?? data.payment_amount ?? sub.plan_recurring_amount ?? sub.amount ?? data.amount ?? 0;
+      return {
+        provider: 'CASHFREE',
+        eventType,
+        rawEvent: eventType,
+        eventId,
+        subscriptionId: sub.subscription_id || data.subscription_id,
+        orderId: payment.order_id || sub.cf_order_id || data.cf_order_id,
+        paymentId: resolvedPaymentId ? String(resolvedPaymentId) : undefined,
+        amount: Number(resolvedAmount),
+        currency: sub.plan_currency || data.currency || 'INR',
+        status: 'RENEWED',
+        metadata: data
+      };
+    }
+
+    // 3. Subscription Status Changed / Mandate Authorization
     if (
       eventType === 'SUBSCRIPTION_STATUS_CHANGE_WEBHOOK' ||
-      eventType === 'SUBSCRIPTION_PAYMENT_SUCCESS_WEBHOOK'
+      eventType === 'SUBSCRIPTION_STATUS_CHANGE' ||
+      eventType === 'SUBSCRIPTION_STATUS_CHANGED' ||
+      eventType === 'SUBSCRIPTION_AUTH_STATUS'
     ) {
       const sub = data.subscription || data;
       const subStatus = (sub.subscription_status || data.status || '').toUpperCase();
       let status: NormalizedWebhookEvent['status'] = 'PENDING';
       if (subStatus === 'ACTIVE') status = 'PAID';
       else if (subStatus === 'CANCELLED') status = 'CANCELLED';
-      else if (subStatus === 'HALTED' || subStatus === 'SUSPENDED') status = 'HALTED';
+      else if (subStatus === 'HALTED' || subStatus === 'SUSPENDED' || subStatus === 'ON_HOLD') status = 'HALTED';
 
       return {
         provider: 'CASHFREE',
         eventType,
         rawEvent: eventType,
+        eventId,
         subscriptionId: sub.subscription_id,
         amount: Number(sub.plan_recurring_amount || sub.amount || 0),
         currency: sub.plan_currency || 'INR',
@@ -517,30 +641,37 @@ export class CashfreeProvider implements IPaymentGatewayProvider {
       };
     }
 
-    // 3. Payment Failed / User Dropped
+    // 4. Payment Failed / User Dropped / Subscription Payment Failed
     if (
       eventType === 'PAYMENT_FAILED_WEBHOOK' ||
       eventType === 'ORDER_FAILED' ||
-      eventType === 'PAYMENT_USER_DROPPED'
+      eventType === 'PAYMENT_USER_DROPPED' ||
+      eventType === 'SUBSCRIPTION_PAYMENT_FAILED' ||
+      eventType === 'SUBSCRIPTION_PAYMENT_FAILED_WEBHOOK' ||
+      eventType === 'SUBSCRIPTION_PAYMENT_DECLINED'
     ) {
       const order = data.order || data;
+      const sub = data.subscription || data;
       return {
         provider: 'CASHFREE',
         eventType,
         rawEvent: eventType,
+        eventId,
         orderId: order.order_id,
+        subscriptionId: sub.subscription_id,
         status: 'FAILED',
         metadata: data
       };
     }
 
-    // 4. Refund Processed
+    // 5. Refund Processed
     if (eventType === 'REFUND_STATUS_WEBHOOK' || eventType === 'REFUND_PROCESSED') {
       const refund = data.refund || data;
       return {
         provider: 'CASHFREE',
         eventType,
         rawEvent: eventType,
+        eventId,
         orderId: refund.order_id,
         refundId: refund.cf_refund_id ? String(refund.cf_refund_id) : refund.refund_id,
         refundAmount: Number(refund.refund_amount || 0),

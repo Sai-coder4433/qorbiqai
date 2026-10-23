@@ -52,9 +52,9 @@ export const SuperAdminPlansPage: React.FC = () => {
   const [success, setSuccess] = useState<string | null>(null);
 
   // Form edit state
-  const [name, setName] = useState('ReviewFlow Unlimited');
-  const [monthlyPrice, setMonthlyPrice] = useState(999);
-  const [yearlyPrice, setYearlyPrice] = useState(9999);
+  const [name, setName] = useState('Qorbiq AI Unlimited');
+  const [monthlyPrice, setMonthlyPrice] = useState(299);
+  const [yearlyPrice, setYearlyPrice] = useState(2999);
   const [currency, setCurrency] = useState('INR');
   const [description, setDescription] = useState('');
   const [trialDays, setTrialDays] = useState(0);
@@ -84,9 +84,9 @@ export const SuperAdminPlansPage: React.FC = () => {
       setVersions(data.versions || []);
 
       if (data.plan) {
-        setName(data.plan.name || 'ReviewFlow Unlimited');
-        setMonthlyPrice(data.plan.monthlyPrice ?? 999);
-        setYearlyPrice(data.plan.yearlyPrice ?? 9999);
+        setName(data.plan.name || 'Qorbiq AI Unlimited');
+        setMonthlyPrice(data.plan.monthlyPrice ?? 299);
+        setYearlyPrice(data.plan.yearlyPrice ?? 2999);
         setCurrency(data.plan.currency || 'INR');
         setDescription(data.plan.description || '');
         setTrialDays(data.plan.trialDays ?? 0);
@@ -260,7 +260,7 @@ export const SuperAdminPlansPage: React.FC = () => {
                   className="w-full px-3.5 py-2 rounded-lg border border-blue-200 text-base font-bold text-slate-900 focus:outline-hidden focus:border-blue-600 bg-white"
                   required
                 />
-                <span className="text-[11px] text-blue-600/80 block">Default: ₹999/month</span>
+                <span className="text-[11px] text-blue-600/80 block">Default: ₹299/month</span>
               </div>
 
               <div className="p-4 rounded-xl bg-emerald-50/50 border border-emerald-100 space-y-2">
@@ -276,7 +276,7 @@ export const SuperAdminPlansPage: React.FC = () => {
                   className="w-full px-3.5 py-2 rounded-lg border border-emerald-200 text-base font-bold text-slate-900 focus:outline-hidden focus:border-emerald-600 bg-white"
                   required
                 />
-                <span className="text-[11px] text-emerald-600/80 block">Default: ₹9999/year</span>
+                <span className="text-[11px] text-emerald-600/80 block">Default: ₹2,999/year</span>
               </div>
             </div>
 

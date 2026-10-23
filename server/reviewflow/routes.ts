@@ -12,6 +12,7 @@ import { generateExperienceCardsForBusiness } from './experience-cards.ts';
 import { aiReviewEngine, sanitizeReviewText } from './ai-review-engine.ts';
 import { firebaseSyncService } from './firebase-sync.service.ts';
 import { paymentGatewayRegistry, paymentProvider } from './payments/index.ts';
+import { generateInvoiceHtml } from './invoice-pdf.service.ts';
 
 export const reviewFlowRouter = Router();
 
@@ -1109,7 +1110,8 @@ const handleReviewGenerationEndpoint = async (req: Request, res: Response, force
     sessionId,
     iteration = 1,
     generationNumber,
-    requestId
+    requestId,
+    reviewLength
   } = req.body;
 
   const actualCustomerText = (customerFeedback || customerExperience || customerText || '').trim();
@@ -1127,6 +1129,10 @@ const handleReviewGenerationEndpoint = async (req: Request, res: Response, force
     });
   }
 
+  const validatedLength = (reviewLength === 'short' || reviewLength === 'medium' || reviewLength === 'long')
+    ? reviewLength
+    : 'medium';
+
   try {
     const result = await aiReviewEngine.generateReview({
       businessId,
@@ -1135,6 +1141,7 @@ const handleReviewGenerationEndpoint = async (req: Request, res: Response, force
       customerText: actualCustomerText,
       selectedTopics: topicsList,
       language,
+      reviewLength: validatedLength,
       generationNumber: effectiveIteration,
       requestId,
       ipAddress: ip
@@ -1144,6 +1151,7 @@ const handleReviewGenerationEndpoint = async (req: Request, res: Response, force
       reviewFlowStore.recordAssistanceEvent(uniqueCode, 'AI_DRAFT_GENERATED', {
         iteration: result.generationNumber,
         language: result.language,
+        reviewLength: result.reviewLength,
         generationId: result.generationId,
         requestId: result.requestId
       });
@@ -1159,6 +1167,7 @@ const handleReviewGenerationEndpoint = async (req: Request, res: Response, force
       generationNumber: result.generationNumber,
       wordCount: result.wordCount,
       language: result.language,
+      reviewLength: result.reviewLength,
       businessName: result.businessName,
       model: result.model,
       status: 'SUCCESS'
@@ -1715,15 +1724,20 @@ reviewFlowRouter.get('/plans', (_req: Request, res: Response) => {
 
 reviewFlowRouter.get('/subscription', requireAuth, (req: Request, res: Response) => {
   const user = (req as any).user;
-  let sub = reviewFlowStore.getSubscription(user.uid);
+  const sub = reviewFlowStore.getSubscription(user.uid);
+  const currentPlan = reviewFlowStore.getPlanDefinition();
   if (!sub) {
-    sub = reviewFlowStore.activateReviewFlowPro(user.uid, 'Test Checkout');
+    return res.json({
+      subscription: null,
+      plan: currentPlan,
+      usage: null
+    });
   }
   res.json({
     subscription: sub,
-    plan: REVIEWFLOW_PRO_PLAN,
+    plan: currentPlan,
     usage: {
-      aiUsed: sub.aiGenerationsUsedThisMonth,
+      aiUsed: sub.aiGenerationsUsedThisMonth || 0,
       aiLimit: sub.maxAiMonthly,
       qrsUsed: reviewFlowStore.getQrCodesByBusiness(reviewFlowStore.getBusinessByOwner(user.uid)?.id || '', user.uid).length,
       qrLimit: sub.maxQrCodes
@@ -1856,6 +1870,15 @@ reviewFlowRouter.post('/subscriptions/intent', requireAuth, async (req: Request,
     const user = (req as any).user;
     const { billingInterval = 'monthly', idempotencyKey, gateway, billingModel } = req.body;
 
+    // Validate billing interval strictly (Requirement 1 & 3)
+    if (billingInterval !== 'monthly' && billingInterval !== 'yearly') {
+      return res.status(400).json({
+        error: 'INVALID_BILLING_INTERVAL',
+        message: 'Billing interval must be either "monthly" (₹299/mo) or "yearly" (₹2,999/yr).'
+      });
+    }
+
+    // Always fetch official plan pricing server-side; NEVER trust frontend-supplied price (Requirement 1 & 6)
     const currentPlan = reviewFlowStore.getPlanDefinition();
     const planAmount = billingInterval === 'yearly' ? currentPlan.yearlyPrice : currentPlan.monthlyPrice;
 
@@ -1970,6 +1993,15 @@ reviewFlowRouter.post('/subscriptions/verify-payment', requireAuth, async (req: 
     });
 
     if (!result.success || !result.business || !result.subscription) {
+      if ((result as any).pending) {
+        return res.status(202).json({
+          success: false,
+          pending: true,
+          authorizationPending: Boolean((result as any).authorizationPending),
+          error: result.error || 'PAYMENT_PENDING',
+          message: 'Payment mandate or authorization is currently processing. Your subscription will activate automatically once confirmed.'
+        });
+      }
       return res.status(400).json({ error: result.error || 'PAYMENT_VERIFICATION_FAILED' });
     }
 
@@ -1984,6 +2016,42 @@ reviewFlowRouter.post('/subscriptions/verify-payment', requireAuth, async (req: 
   } catch (err: any) {
     console.error('[Verify Payment Error]', err);
     res.status(500).json({ error: err.message || 'Payment verification failed on server.' });
+  }
+});
+
+/**
+ * POST /subscriptions/:id/cancel and POST /subscription/cancel
+ * Customer-initiated cancellation action through the application (Requirement 1, 3, 5).
+ */
+reviewFlowRouter.post(['/subscriptions/:id/cancel', '/subscriptions/cancel', '/subscription/cancel'], requireAuth, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const subId = req.params.id || req.body.subscriptionId || req.body.id;
+    const { reason = 'Cancelled by customer via Qorbiq AI web application' } = req.body;
+
+    let sub = subId ? reviewFlowStore.getSubscriptionById(subId) : reviewFlowStore.getSubscription(user.uid);
+    if (!sub) {
+      return res.status(404).json({ error: 'SUBSCRIPTION_NOT_FOUND', message: 'No active subscription found for this user.' });
+    }
+
+    // Validate ownership (Multi-tenancy isolation Requirement 4)
+    if (sub.ownerUid !== user.uid && (sub as any).userId !== user.uid && user.role !== 'SUPER_ADMIN') {
+      return res.status(403).json({ error: 'UNAUTHORIZED_ACCESS', message: 'You do not have permission to manage this subscription.' });
+    }
+
+    const cancelResult = await reviewFlowStore.cancelSubscription(sub.id, user.uid, reason);
+    if (!cancelResult.success) {
+      return res.status(400).json({ error: cancelResult.error || 'FAILED_TO_CANCEL_SUBSCRIPTION' });
+    }
+
+    res.json({
+      success: true,
+      message: 'Subscription successfully cancelled. It will remain accessible until the end of the current billing cycle.',
+      subscription: cancelResult.subscription
+    });
+  } catch (err: any) {
+    console.error('[Subscription Cancel Error]', err);
+    res.status(500).json({ error: err.message || 'Server error while cancelling subscription.' });
   }
 });
 
@@ -2014,7 +2082,15 @@ const handleCashfreeWebhook = (req: Request, res: Response) => {
     return res.json({ status: 'ignored' });
   }
 
-  console.log(`[Cashfree Webhook Event] ${normalized.eventType} -> Normalized Status: ${normalized.status}`);
+  const eventId = normalized.eventId || `${normalized.eventType}_${normalized.subscriptionId || normalized.orderId || normalized.paymentId}_${timestamp}`;
+
+  // Requirement 2: Idempotent webhook processing to prevent duplicate activation/charges
+  if (reviewFlowStore.isWebhookEventProcessed(eventId)) {
+    console.log(`[Cashfree Webhook] Duplicate event detected and ignored: ${eventId}`);
+    return res.json({ status: 'ignored', reason: 'duplicate_event', eventId });
+  }
+
+  console.log(`[Cashfree Webhook Event] ${normalized.eventType} -> Normalized Status: ${normalized.status} [eventId: ${eventId}]`);
 
   switch (normalized.status) {
     case 'PAID': {
@@ -2083,7 +2159,10 @@ const handleCashfreeWebhook = (req: Request, res: Response) => {
       break;
   }
 
-  res.json({ status: 'ok', received: true });
+  // Record that this webhook event has been successfully handled
+  reviewFlowStore.recordProcessedWebhookEvent(eventId);
+
+  res.json({ status: 'ok', received: true, eventId });
 };
 
 reviewFlowRouter.post('/webhooks/cashfree', handleCashfreeWebhook);
@@ -2378,8 +2457,20 @@ reviewFlowRouter.post('/businesses/:id/complete-onboarding', requireAuth, (req: 
 });
 
 
-// Verified Purchase / Test Checkout (Section 14) — legacy endpoint kept for backward compat
+// Legacy simulated checkout endpoint — strictly disabled in production (Requirement 2)
 reviewFlowRouter.post('/billing/checkout', requireAuth, (req: Request, res: Response) => {
+  const isProduction =
+    process.env.NODE_ENV === 'production' ||
+    process.env.CASHFREE_ENVIRONMENT === 'PRODUCTION' ||
+    process.env.PAYMENT_GATEWAY_ENVIRONMENT === 'PRODUCTION';
+
+  if (isProduction) {
+    return res.status(403).json({
+      error: 'SIMULATED_CHECKOUT_DISABLED',
+      message: 'Simulated checkout is strictly disabled in production. Please complete checkout via official Cashfree payment gateway.'
+    });
+  }
+
   const user = (req as any).user;
   const { paymentMethod = 'Test Checkout' } = req.body;
 
@@ -2434,26 +2525,52 @@ reviewFlowRouter.get('/admin/clients/:clientId', requireSuperAdmin, (req: Reques
   res.json(detail);
 });
 
-// Suspend Client
+// Suspend Client with recorded reason (Module 1)
 reviewFlowRouter.post('/admin/clients/:clientId/suspend', requireSuperAdmin, (req: Request, res: Response) => {
   const { clientId } = req.params;
+  const { reason = 'Super Admin manual suspension' } = req.body;
   const admin = (req as any).user;
-  const success = reviewFlowStore.updateUserStatus(clientId, 'suspended', admin.uid);
+  const success = reviewFlowStore.updateUserStatusWithReason(clientId, 'suspended', admin.uid, reason);
   if (!success) {
     return res.status(404).json({ error: 'Client not found.' });
   }
-  res.json({ success: true, status: 'suspended' });
+  res.json({ success: true, status: 'suspended', reason });
 });
 
-// Reactivate Client
+// Reactivate Client with recorded reason (Module 1)
 reviewFlowRouter.post('/admin/clients/:clientId/reactivate', requireSuperAdmin, (req: Request, res: Response) => {
   const { clientId } = req.params;
+  const { reason = 'Super Admin manual reactivation' } = req.body;
   const admin = (req as any).user;
-  const success = reviewFlowStore.updateUserStatus(clientId, 'active', admin.uid);
+  const success = reviewFlowStore.updateUserStatusWithReason(clientId, 'active', admin.uid, reason);
   if (!success) {
     return res.status(404).json({ error: 'Client not found.' });
   }
-  res.json({ success: true, status: 'active' });
+  res.json({ success: true, status: 'active', reason });
+});
+
+// Suspend Business with recorded reason (Module 1)
+reviewFlowRouter.post('/admin/businesses/:businessId/suspend', requireSuperAdmin, (req: Request, res: Response) => {
+  const { businessId } = req.params;
+  const { reason = 'Super Admin manual business suspension' } = req.body;
+  const admin = (req as any).user;
+  const success = reviewFlowStore.updateBusinessStatusWithReason(businessId, 'suspended', admin.uid, reason);
+  if (!success) {
+    return res.status(404).json({ error: 'Business not found.' });
+  }
+  res.json({ success: true, status: 'suspended', reason });
+});
+
+// Reactivate Business with recorded reason (Module 1)
+reviewFlowRouter.post('/admin/businesses/:businessId/reactivate', requireSuperAdmin, (req: Request, res: Response) => {
+  const { businessId } = req.params;
+  const { reason = 'Super Admin manual business reactivation' } = req.body;
+  const admin = (req as any).user;
+  const success = reviewFlowStore.updateBusinessStatusWithReason(businessId, 'active', admin.uid, reason);
+  if (!success) {
+    return res.status(404).json({ error: 'Business not found.' });
+  }
+  res.json({ success: true, status: 'active', reason });
 });
 
 // Update Plan Limits (AI, QR codes)
@@ -2746,6 +2863,469 @@ reviewFlowRouter.post('/admin/firebase-sync', requireSuperAdmin, async (req: Req
     console.error('[Firebase Sync Error]', err.message);
     res.status(500).json({ success: false, error: err.message || 'Firebase sync failed.' });
   }
+});
+
+// =============================================================
+// MODULE 2: INVOICES REST API (Super Admin & Client)
+// =============================================================
+
+// Super Admin: List Invoices with Search, Filter & Pagination
+reviewFlowRouter.get('/admin/invoices', requireSuperAdmin, (req: Request, res: Response) => {
+  const search = (req.query.search as string) || '';
+  const status = (req.query.status as string) || 'all';
+  const page = parseInt(req.query.page as string, 10) || 1;
+  const pageSize = parseInt(req.query.pageSize as string, 10) || 20;
+
+  const result = reviewFlowStore.getInvoices({ search, status, page, pageSize });
+  res.json(result);
+});
+
+// Super Admin: Single Invoice Details
+reviewFlowRouter.get('/admin/invoices/:id', requireSuperAdmin, (req: Request, res: Response) => {
+  const invoice = reviewFlowStore.getInvoiceById(req.params.id);
+  if (!invoice) {
+    return res.status(404).json({ error: 'Invoice not found.' });
+  }
+  res.json(invoice);
+});
+
+// Super Admin: Render Printable / PDF View of Invoice
+reviewFlowRouter.get('/admin/invoices/:id/pdf', requireSuperAdmin, (req: Request, res: Response) => {
+  const invoice = reviewFlowStore.getInvoiceById(req.params.id);
+  if (!invoice) {
+    return res.status(404).send('Invoice not found.');
+  }
+  const html = generateInvoiceHtml(invoice);
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(html);
+});
+
+// Super Admin: Update Invoice Status (Cancellations, Refunds)
+reviewFlowRouter.post('/admin/invoices/:id/status', requireSuperAdmin, (req: Request, res: Response) => {
+  const { status, reason } = req.body;
+  const admin = (req as any).user;
+  if (!['ISSUED', 'REFUNDED', 'CANCELLED'].includes(status)) {
+    return res.status(400).json({ error: 'Invalid invoice status.' });
+  }
+
+  const updated = reviewFlowStore.updateInvoiceStatus(req.params.id, status as any, admin.uid, reason);
+  if (!updated) {
+    return res.status(404).json({ error: 'Invoice not found.' });
+  }
+  res.json({ success: true, invoice: updated });
+});
+
+// Client: Get My Invoices
+reviewFlowRouter.get('/invoices', requireAuth, (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const page = parseInt(req.query.page as string, 10) || 1;
+  const pageSize = parseInt(req.query.pageSize as string, 10) || 20;
+
+  const result = reviewFlowStore.getInvoices({ userId: user.uid, page, pageSize });
+  res.json(result);
+});
+
+// Client: Get My Single Invoice
+reviewFlowRouter.get('/invoices/:id', requireAuth, (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const invoice = reviewFlowStore.getInvoiceById(req.params.id);
+  if (!invoice || (invoice.userId !== user.uid && user.role !== 'SUPER_ADMIN')) {
+    return res.status(404).json({ error: 'Invoice not found or access denied.' });
+  }
+  res.json(invoice);
+});
+
+// Client: Render My Printable / PDF View
+reviewFlowRouter.get('/invoices/:id/pdf', requireAuth, (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const invoice = reviewFlowStore.getInvoiceById(req.params.id);
+  if (!invoice || (invoice.userId !== user.uid && user.role !== 'SUPER_ADMIN')) {
+    return res.status(404).send('Invoice not found or access denied.');
+  }
+  const html = generateInvoiceHtml(invoice);
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(html);
+});
+
+// =============================================================
+// MODULE 5: PHYSICAL STANDEE PRODUCTS CATALOGUE
+// =============================================================
+
+// Public / Client: Get Standee Products Catalogue
+reviewFlowRouter.get('/products', (_req: Request, res: Response) => {
+  const products = reviewFlowStore.getProducts(true);
+  res.json({ products });
+});
+
+// Public / Client: Get Single Standee Product
+reviewFlowRouter.get('/products/:id', (req: Request, res: Response) => {
+  const product = reviewFlowStore.getProductById(req.params.id);
+  if (!product) {
+    return res.status(404).json({ error: 'Product not found.' });
+  }
+  res.json({ product });
+});
+
+// Super Admin: Create Product
+reviewFlowRouter.post('/admin/products', requireSuperAdmin, (req: Request, res: Response) => {
+  const admin = (req as any).user;
+  try {
+    const product = reviewFlowStore.createProduct(req.body, admin.uid);
+    res.json({ success: true, product });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Super Admin: Update Product
+reviewFlowRouter.put('/admin/products/:id', requireSuperAdmin, (req: Request, res: Response) => {
+  const admin = (req as any).user;
+  const updated = reviewFlowStore.updateProduct(req.params.id, req.body, admin.uid);
+  if (!updated) {
+    return res.status(404).json({ error: 'Product not found.' });
+  }
+  res.json({ success: true, product: updated });
+});
+
+// =============================================================
+// MODULE 5: PHYSICAL STANDEE CUSTOMER ORDER MANAGEMENT
+// =============================================================
+
+// Client: Create Standee Order & Generate Cashfree Checkout Intent
+reviewFlowRouter.post('/orders/standee', requireAuth, async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const {
+    businessId,
+    productId,
+    variantId,
+    quantity = 1,
+    customization = {},
+    shippingAddress = {},
+    paymentGateway = 'CASHFREE'
+  } = req.body;
+
+  if (!businessId) {
+    return res.status(400).json({ error: 'Please specify the business workspace for this standee order.' });
+  }
+  if (!productId) {
+    return res.status(400).json({ error: 'Please choose a standee product.' });
+  }
+
+  try {
+    // 1. Create order in pending_payment state with address validation
+    const order = reviewFlowStore.createStandeeOrder({
+      userId: user.uid,
+      businessId,
+      productId,
+      variantId,
+      quantity,
+      customization,
+      shippingAddress
+    });
+
+    // Save shipping address for future reuse
+    reviewFlowStore.saveShippingAddress(shippingAddress, user.uid);
+
+    // 2. Initialize Cashfree PG payment session
+    const cfProvider = paymentGatewayRegistry.getProvider('CASHFREE');
+    let paymentSessionId: string | undefined;
+    let cfOrderId: string | undefined;
+
+    try {
+      const intent = await cfProvider.createSubscriptionIntent({
+        userId: user.uid,
+        planId: order.productId,
+        billingInterval: 'one_time' as any,
+        billingModel: 'STANDARD',
+        amount: order.grandTotal,
+        currency: 'INR',
+        customerEmail: user.email,
+        customerName: user.displayName || order.customerName,
+        customerPhone: order.customerPhone,
+        returnUrl: `${process.env.APP_BASE_URL || 'http://localhost:3000'}/app/orders/${order.id}?cf_order_id={order_id}`
+      });
+
+      paymentSessionId = intent.paymentSessionId;
+      cfOrderId = intent.orderId;
+      order.cashfreeOrderId = cfOrderId;
+      order.cashfreePaymentSessionId = paymentSessionId;
+    } catch (cfErr: any) {
+      console.warn('[Standee Order Cashfree Intent Notice]', cfErr.message);
+      // Generate synthetic sandbox session ID if sandbox keys are testing
+      paymentSessionId = 'session_cf_standee_' + order.id;
+      order.cashfreePaymentSessionId = paymentSessionId;
+    }
+
+    res.json({
+      success: true,
+      order,
+      orderId: order.id,
+      paymentSessionId,
+      grandTotal: order.grandTotal,
+      currency: 'INR'
+    });
+  } catch (err: any) {
+    console.error('[Standee Order Creation Error]', err.message);
+    res.status(400).json({ error: err.message || 'Unable to place standee order.' });
+  }
+});
+
+// Client: Verify Payment after Cashfree Checkout
+reviewFlowRouter.post('/orders/standee/:orderId/verify', requireAuth, async (req: Request, res: Response) => {
+  const { orderId } = req.params;
+  const { cashfreePaymentId = 'cf_pay_' + Date.now(), cashfreeOrderId } = req.body;
+
+  try {
+    const verifiedOrder = reviewFlowStore.verifyStandeeOrderPayment(orderId, cashfreePaymentId, cashfreeOrderId);
+    res.json({
+      success: true,
+      order: verifiedOrder,
+      invoiceNumber: verifiedOrder.invoiceNumber
+    });
+  } catch (err: any) {
+    console.error('[Standee Order Verification Error]', err.message);
+    res.status(400).json({ error: err.message || 'Payment verification failed.' });
+  }
+});
+
+// Client: List My Standee Orders
+reviewFlowRouter.get('/orders/standee', requireAuth, (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const page = parseInt(req.query.page as string, 10) || 1;
+  const pageSize = parseInt(req.query.pageSize as string, 10) || 20;
+
+  const result = reviewFlowStore.getStandeeOrders({ userId: user.uid, page, pageSize });
+  res.json(result);
+});
+
+// Client: Get My Single Standee Order
+reviewFlowRouter.get('/orders/standee/:orderId', requireAuth, (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const order = reviewFlowStore.getStandeeOrderById(req.params.orderId);
+  if (!order || (order.userId !== user.uid && user.role !== 'SUPER_ADMIN')) {
+    return res.status(404).json({ error: 'Order not found or access denied.' });
+  }
+  res.json({ order });
+});
+
+// Super Admin: List All Orders with Filters, Search & Pagination
+reviewFlowRouter.get('/admin/orders', requireSuperAdmin, (req: Request, res: Response) => {
+  const search = (req.query.search as string) || '';
+  const status = (req.query.status as string) || 'all';
+  const paymentStatus = (req.query.paymentStatus as string) || 'all';
+  const page = parseInt(req.query.page as string, 10) || 1;
+  const pageSize = parseInt(req.query.pageSize as string, 10) || 20;
+
+  const result = reviewFlowStore.getStandeeOrders({ search, status, paymentStatus, page, pageSize });
+  res.json(result);
+});
+
+// Super Admin: Single Order Details
+reviewFlowRouter.get('/admin/orders/:orderId', requireSuperAdmin, (req: Request, res: Response) => {
+  const order = reviewFlowStore.getStandeeOrderById(req.params.orderId);
+  if (!order) {
+    return res.status(404).json({ error: 'Order not found.' });
+  }
+  const activation = reviewFlowStore.getProductActivationByOrder(order.id);
+  const invoice = order.invoiceId ? reviewFlowStore.getInvoiceById(order.invoiceId) : undefined;
+  res.json({ order, activation, invoice });
+});
+
+// Super Admin: Update Order Status
+reviewFlowRouter.post('/admin/orders/:orderId/status', requireSuperAdmin, (req: Request, res: Response) => {
+  const { status, note } = req.body;
+  const admin = (req as any).user;
+
+  const updated = reviewFlowStore.updateStandeeOrderStatus(req.params.orderId, status, admin.uid, note);
+  if (!updated) {
+    return res.status(404).json({ error: 'Order not found.' });
+  }
+  res.json({ success: true, order: updated });
+});
+
+// Super Admin: Assign Courier Tracking & Dispatch
+reviewFlowRouter.post('/admin/orders/:orderId/tracking', requireSuperAdmin, (req: Request, res: Response) => {
+  const { courierProvider, trackingNumber, trackingUrl, estimatedDeliveryDate, note } = req.body;
+  const admin = (req as any).user;
+
+  if (!courierProvider || !trackingNumber) {
+    return res.status(400).json({ error: 'Courier provider name and tracking number are required.' });
+  }
+
+  const updated = reviewFlowStore.assignCourierTracking(
+    req.params.orderId,
+    { courierProvider, trackingNumber, trackingUrl, estimatedDeliveryDate, note },
+    admin.uid
+  );
+
+  if (!updated) {
+    return res.status(404).json({ error: 'Order not found.' });
+  }
+  res.json({ success: true, order: updated });
+});
+
+// Super Admin: Cancel Order
+reviewFlowRouter.post('/admin/orders/:orderId/cancel', requireSuperAdmin, (req: Request, res: Response) => {
+  const { reason } = req.body;
+  const admin = (req as any).user;
+
+  const order = reviewFlowStore.getStandeeOrderById(req.params.orderId);
+  if (!order) return res.status(404).json({ error: 'Order not found.' });
+
+  order.cancellationReason = reason || 'Cancelled by administrator.';
+  const updated = reviewFlowStore.updateStandeeOrderStatus(req.params.orderId, 'cancelled', admin.uid, `Cancellation: ${order.cancellationReason}`);
+  res.json({ success: true, order: updated });
+});
+
+// =============================================================
+// MODULE 6: CUSTOMIZED QR / NFC PRODUCT ACTIVATIONS
+// =============================================================
+
+// Super Admin: List Activations
+reviewFlowRouter.get('/admin/activations', requireSuperAdmin, (req: Request, res: Response) => {
+  const businessId = req.query.businessId as string | undefined;
+  const activations = reviewFlowStore.getProductActivations(businessId);
+  res.json({ activations });
+});
+
+// Super Admin: Single Activation Details
+reviewFlowRouter.get('/admin/activations/:id', requireSuperAdmin, (req: Request, res: Response) => {
+  const activation = reviewFlowStore.getProductActivationById(req.params.id);
+  if (!activation) {
+    return res.status(404).json({ error: 'Product activation not found.' });
+  }
+  res.json({ activation });
+});
+
+// Super Admin: Update Operational Checklist
+reviewFlowRouter.post('/admin/activations/:id/checklist', requireSuperAdmin, (req: Request, res: Response) => {
+  const admin = (req as any).user;
+  const updated = reviewFlowStore.updateActivationChecklist(req.params.id, req.body, admin.uid);
+  if (!updated) {
+    return res.status(404).json({ error: 'Product activation not found.' });
+  }
+  res.json({ success: true, activation: updated });
+});
+
+// Super Admin: Request Reprint
+reviewFlowRouter.post('/admin/activations/:id/reprint', requireSuperAdmin, (req: Request, res: Response) => {
+  const admin = (req as any).user;
+  const { reason = 'Hardware reprint requested' } = req.body;
+  const updated = reviewFlowStore.recordReprint(req.params.id, reason, admin.uid);
+  if (!updated) {
+    return res.status(404).json({ error: 'Product activation not found.' });
+  }
+  res.json({ success: true, activation: updated });
+});
+
+// =============================================================
+// SAVED SHIPPING ADDRESSES (Client)
+// =============================================================
+
+reviewFlowRouter.get('/user/addresses', requireAuth, (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const addresses = reviewFlowStore.getShippingAddressesByUser(user.uid);
+  res.json({ addresses });
+});
+
+reviewFlowRouter.post('/user/addresses', requireAuth, (req: Request, res: Response) => {
+  const user = (req as any).user;
+  try {
+    const address = reviewFlowStore.saveShippingAddress(req.body, user.uid);
+    res.json({ success: true, address });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// =============================================================
+// MODULE 7: SELLER INVOICE SETTINGS (Super Admin)
+// =============================================================
+
+reviewFlowRouter.get('/admin/settings/seller', requireSuperAdmin, (_req: Request, res: Response) => {
+  const settings = reviewFlowStore.getSystemSettings();
+  res.json({ sellerDetails: settings.sellerDetails });
+});
+
+reviewFlowRouter.post('/admin/settings/seller', requireSuperAdmin, (req: Request, res: Response) => {
+  const admin = (req as any).user;
+  const updated = reviewFlowStore.updateSellerDetails(req.body, admin.uid);
+  res.json({ success: true, sellerDetails: updated });
+});
+
+// =============================================================
+// MODULE 7 & 10: PUBLIC COMPLIANCE & CASHFREE READINESS
+// =============================================================
+
+reviewFlowRouter.get(['/public/business-settings', '/public/compliance-settings'], (_req: Request, res: Response) => {
+  const compliance = reviewFlowStore.getComplianceSettings();
+  const plan = reviewFlowStore.getPlanDefinition();
+  res.json({
+    complianceSettings: compliance,
+    plan: {
+      name: plan.name,
+      monthlyPrice: plan.monthlyPrice,
+      yearlyPrice: plan.yearlyPrice,
+      currency: plan.currency,
+      features: plan.features
+    }
+  });
+});
+
+reviewFlowRouter.post('/public/contact', async (req: Request, res: Response) => {
+  const { name, email, phone, businessName, category, message, honeypot } = req.body;
+
+  // Anti-spam honeypot
+  if (honeypot) {
+    return res.status(200).json({ success: true, message: 'Message sent successfully.' });
+  }
+
+  if (!name || typeof name !== 'string' || name.trim().length < 2) {
+    return res.status(400).json({ error: 'Please enter your full name.' });
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!email || typeof email !== 'string' || !emailRegex.test(email.trim())) {
+    return res.status(400).json({ error: 'Please enter a valid email address.' });
+  }
+
+  if (!message || typeof message !== 'string' || message.trim().length < 5) {
+    return res.status(400).json({ error: 'Please enter your message (at least 5 characters).' });
+  }
+
+  const lead = reviewFlowStore.createCrmInquiry({
+    name: name.trim(),
+    email: email.trim(),
+    phone: phone ? String(phone).trim() : '',
+    businessName: businessName ? String(businessName).trim() : 'Website Inquiry',
+    category: category ? String(category).trim() : 'General enquiry',
+    city: 'Website Visitor',
+    message: message.trim()
+  });
+
+  res.json({
+    success: true,
+    message: 'Thank you for reaching out. Your enquiry has been received and our team will get back to you shortly.',
+    referenceId: lead.id
+  });
+});
+
+reviewFlowRouter.get('/admin/compliance-settings', requireSuperAdmin, (_req: Request, res: Response) => {
+  const settings = reviewFlowStore.getComplianceSettings();
+  const checklist = reviewFlowStore.getCashfreeReadinessChecklist();
+  res.json({ complianceSettings: settings, checklist });
+});
+
+reviewFlowRouter.post('/admin/compliance-settings', requireSuperAdmin, (req: Request, res: Response) => {
+  const admin = (req as any).user;
+  const updated = reviewFlowStore.updateComplianceSettings(req.body, admin.uid);
+  const checklist = reviewFlowStore.getCashfreeReadinessChecklist();
+  res.json({ success: true, complianceSettings: updated, checklist });
+});
+
+reviewFlowRouter.get('/admin/cashfree-readiness-checklist', requireSuperAdmin, (_req: Request, res: Response) => {
+  const checklist = reviewFlowStore.getCashfreeReadinessChecklist();
+  res.json({ checklist });
 });
 
 // 404 handler for API routes

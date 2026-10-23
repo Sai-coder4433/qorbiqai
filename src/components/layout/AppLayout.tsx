@@ -18,7 +18,8 @@ import {
   ShieldCheck,
   Check,
   AlertCircle,
-  ExternalLink
+  ExternalLink,
+  Package
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context.tsx';
 import { useBusiness } from '../../lib/business-context.tsx';
@@ -164,6 +165,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       path: '/app/qr',
       icon: QrCode,
       active: location.pathname === '/app/qr' || location.pathname === '/app/qr-automation'
+    },
+    {
+      label: 'Order Standees',
+      path: '/app/standees',
+      icon: Package,
+      active: location.pathname === '/app/standees'
     },
     {
       label: 'Analytics',
@@ -439,19 +446,19 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
               {[
                 {
                   id: 'monthly',
-                  name: 'Monthly Unlimited',
-                  price: '₹999',
+                  name: 'Monthly Plan',
+                  price: '₹299',
                   period: '/month',
                   desc: 'Flexible monthly billing with full platform access.',
                   features: ['Unlimited AI Review Generations', 'Permanent Dynamic QR Redirect', 'HD QR & NFC Support']
                 },
                 {
                   id: 'yearly',
-                  name: 'Yearly Unlimited',
-                  price: '₹9,999',
+                  name: 'Yearly Plan',
+                  price: '₹2,999',
                   period: '/year',
-                  badge: 'Save 17%',
-                  desc: 'Best value annual plan · 2 months free.',
+                  badge: 'Best Value · Save ₹589/yr',
+                  desc: 'Best value annual plan compared with 12 monthly payments.',
                   features: ['Unlimited AI Review Generations', 'Permanent Dynamic QR Redirect', 'HD QR & NFC Support', 'Priority Gemini Speed']
                 }
               ].map(plan => {

@@ -28,6 +28,8 @@ import {
   Loader2
 } from 'lucide-react';
 import { freshTestApi } from '../lib/fresh-test-api.ts';
+import { PublicNavbar } from '../components/public/PublicNavbar.tsx';
+import { PublicFooter } from '../components/public/PublicFooter.tsx';
 
 export const LandingPage: React.FC = () => {
   const [inquiryName, setInquiryName] = useState('');
@@ -73,45 +75,7 @@ export const LandingPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-blue-100 selection:text-blue-900">
       {/* 1. Header / Navigation */}
-      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200 h-16 flex items-center justify-between px-6 lg:px-12">
-        <Link to="/" className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold shadow-xs">
-            <QrCode className="w-4 h-4" />
-          </div>
-          <div>
-            <span className="font-extrabold text-base tracking-tight text-slate-900 block leading-tight">
-              ReviewFlow AI
-            </span>
-            <span className="text-[10px] text-slate-400 font-semibold tracking-wider uppercase">
-              Google Review Assistant
-            </span>
-          </div>
-        </Link>
-
-        <nav className="hidden md:flex items-center gap-6 text-xs font-semibold text-slate-600">
-          <a href="#how-it-works" className="hover:text-blue-600 transition-colors">How It Works</a>
-          <a href="#features" className="hover:text-blue-600 transition-colors">Features</a>
-          <Link to="/pricing" className="hover:text-blue-600 transition-colors">Pricing</Link>
-          <a href="#security" className="hover:text-blue-600 transition-colors">Security</a>
-          <a href="#faq" className="hover:text-blue-600 transition-colors">FAQ</a>
-        </nav>
-
-        <div className="flex items-center gap-3">
-          <Link
-            to="/login"
-            className="text-xs font-semibold text-slate-700 hover:text-blue-600 px-3 py-2 transition-colors"
-          >
-            Sign In
-          </Link>
-          <Link
-            to="/signup"
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5"
-          >
-            <span>Create Account</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
-        </div>
-      </header>
+      <PublicNavbar activePage="home" />
 
       {/* 2. Hero Section (Section 13) */}
       <section className="py-20 lg:py-28 px-6 text-center max-w-5xl mx-auto space-y-6">
@@ -167,7 +131,7 @@ export const LandingPage: React.FC = () => {
         <div className="max-w-6xl mx-auto space-y-12">
           <div className="text-center max-w-2xl mx-auto space-y-2">
             <span className="text-xs font-bold uppercase tracking-wider text-blue-600">Simple Process</span>
-            <h2 className="text-3xl font-black text-slate-900 tracking-tight">How ReviewFlow Works</h2>
+            <h2 className="text-3xl font-black text-slate-900 tracking-tight">How Qorbiq AI Works</h2>
             <p className="text-sm text-slate-600">
               From scanning a desk stand to drafting genuine words and opening Google Review in under 30 seconds.
             </p>
@@ -200,7 +164,7 @@ export const LandingPage: React.FC = () => {
               </div>
               <h3 className="font-bold text-base text-slate-900">AI Drafts Their Words</h3>
               <p className="text-xs text-slate-600 leading-relaxed">
-                The customer describes their genuine experience. ReviewFlow rewrites only what they wrote into a polished, natural draft.
+                The customer describes their genuine experience. Qorbiq AI rewrites only what they wrote into a polished, natural draft.
               </p>
             </div>
 
@@ -217,11 +181,11 @@ export const LandingPage: React.FC = () => {
         </div>
       </section>
 
-      {/* 4. Why Businesses Use ReviewFlow (Section 13) */}
+      {/* 4. Why Businesses Use Qorbiq AI (Section 13) */}
       <section className="py-20 px-6 max-w-6xl mx-auto space-y-12">
         <div className="text-center max-w-2xl mx-auto space-y-2">
           <span className="text-xs font-bold uppercase tracking-wider text-blue-600">The Problem Solved</span>
-          <h2 className="text-3xl font-black text-slate-900 tracking-tight">Why Local Businesses Choose ReviewFlow</h2>
+          <h2 className="text-3xl font-black text-slate-900 tracking-tight">Why Local Businesses Choose Qorbiq AI</h2>
           <p className="text-sm text-slate-600">
             Customers genuinely appreciate your service, but typing a helpful Google review from a phone keyboard is tedious.
           </p>
@@ -234,7 +198,7 @@ export const LandingPage: React.FC = () => {
             </div>
             <h3 className="font-bold text-base text-slate-900">Solves "Writer's Block"</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Most happy customers leave only stars without text. ReviewFlow helps them express their authentic experience in clear sentences.
+              Most happy customers leave only stars without text. Qorbiq AI helps them express their authentic experience in clear sentences.
             </p>
           </div>
 
@@ -319,71 +283,112 @@ export const LandingPage: React.FC = () => {
         </div>
       </section>
 
-      {/* 6. Main Plan (Section 11 & 13) */}
-      <section className="py-20 px-6 max-w-4xl mx-auto space-y-8">
+      {/* 6. Pricing Plans */}
+      <section className="py-20 px-6 max-w-5xl mx-auto space-y-8">
         <div className="text-center space-y-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-blue-600">Simple Transparent Pricing</span>
-          <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">One Plan. Everything You Need.</h2>
-          <p className="text-sm text-slate-600">
-            No tiered artificial restrictions. The complete ReviewFlow experience under a single monthly plan.
+          <span className="text-xs font-bold uppercase tracking-wider text-blue-600">Simple, Transparent Pricing</span>
+          <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">Two Straightforward Plans. Full Features.</h2>
+          <p className="text-sm text-slate-600 max-w-xl mx-auto">
+            Choose the billing schedule that suits your business. All features, multi-language AI review drafting, permanent dynamic QR stands, and live analytics included.
           </p>
         </div>
 
-        {/* REVIEWFLOW PRO CARD (Section 11) */}
-        <div className="bg-white rounded-3xl border-2 border-blue-600 p-8 sm:p-10 shadow-xl space-y-8 relative overflow-hidden">
-          <div className="absolute top-0 right-0 bg-blue-600 text-white font-bold text-[10px] uppercase tracking-widest px-4 py-1 rounded-bl-xl">
-            Main Launch Plan
-          </div>
-
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100">
-            <div>
-              <h3 className="text-2xl font-black text-slate-900">ReviewFlow Pro</h3>
-              <p className="text-xs text-slate-600 mt-1 max-w-md">
-                “Turn every genuine customer experience into a better-written review draft — and make your Google Review journey simple.”
-              </p>
-            </div>
-            <div className="text-left sm:text-right">
-              <div className="text-4xl font-black text-slate-900">$49 <span className="text-sm text-slate-500 font-normal">/ mo</span></div>
-              <span className="text-[11px] text-emerald-600 font-semibold">14-Day Full Testing Experience</span>
-            </div>
-          </div>
-
-          {/* Included Features Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-xs text-slate-700">
-            {[
-              'Unlimited business profile management',
-              'QR Review System with high-res PNG/SVG',
-              'Up to 5 Trackable QR code stands',
-              '500 AI-assisted review drafts / month',
-              'Direct Google Review destination link',
-              'Multi-language support (English, Hindi, Marathi)',
-              'Regenerate Draft with alternative phrasings',
-              'One-click Copy & direct Google Review open',
-              'Mobile-friendly customer experience (No app needed)',
-              'QR analytics & placement tracking',
-              'Business performance dashboard',
-              'Strict multi-tenant Firebase security'
-            ].map((feature, i) => (
-              <div key={i} className="flex items-center gap-2.5">
-                <Check className="w-4 h-4 text-blue-600 shrink-0" />
-                <span>{feature}</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* Monthly Plan */}
+          <div className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm flex flex-col justify-between space-y-6">
+            <div className="space-y-4">
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Monthly Billing</span>
+                <h3 className="text-2xl font-black text-slate-900 mt-1">Qorbiq AI Monthly</h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Flexible monthly subscription for continuous review generation.
+                </p>
               </div>
-            ))}
-          </div>
-
-          <div className="pt-4">
+              <div className="pt-2 pb-4 border-b border-slate-100">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-4xl font-black text-slate-900">₹299</span>
+                  <span className="text-sm font-semibold text-slate-500">/month</span>
+                </div>
+                <span className="text-[11px] text-slate-400 mt-1 block">Billed every 1 month · Cancel anytime</span>
+              </div>
+              <div className="space-y-2.5 text-xs text-slate-700">
+                {[
+                  'Full AI-assisted customer review drafting',
+                  'Dynamic QR codes with server-side redirection',
+                  'Multi-language assistance (English, Hindi, Marathi)',
+                  'Direct Google Business Profile link integration',
+                  'Scan & review conversion analytics',
+                  'Secure multi-tenant cloud workspace'
+                ].map((feat, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-blue-600 shrink-0" />
+                    <span>{feat}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
             <Link
-              to="/signup"
-              className="w-full py-4 px-6 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm sm:text-base rounded-2xl shadow-md transition-all flex items-center justify-center gap-2 hover:scale-[1.01]"
+              to="/pricing"
+              className="w-full py-3.5 px-6 rounded-2xl font-bold text-xs sm:text-sm text-center border-2 border-slate-900 text-slate-900 hover:bg-slate-900 hover:text-white transition-all flex items-center justify-center gap-2"
             >
-              <span>Start With ReviewFlow Pro</span>
+              <span>Get Started Monthly</span>
               <ArrowRight className="w-4 h-4" />
             </Link>
-            <p className="text-center text-[11px] text-slate-400 mt-2.5">
-              Instant activation • Test checkout available • Cancel anytime
-            </p>
+          </div>
+
+          {/* Yearly Plan */}
+          <div className="bg-white rounded-3xl border-2 border-blue-600 p-8 shadow-xl flex flex-col justify-between space-y-6 relative overflow-hidden">
+            <div className="absolute top-0 right-0 bg-blue-600 text-white font-extrabold text-[10px] uppercase tracking-widest px-4 py-1 rounded-bl-xl">
+              Save 16.4%
+            </div>
+            <div className="space-y-4">
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-blue-600">Annual Commitment</span>
+                <h3 className="text-2xl font-black text-slate-900 mt-1">Qorbiq AI Yearly</h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Best value for long-term Google review momentum and SEO reputation.
+                </p>
+              </div>
+              <div className="pt-2 pb-4 border-b border-slate-100">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-4xl font-black text-slate-900">₹2,999</span>
+                  <span className="text-sm font-semibold text-slate-500">/year</span>
+                </div>
+                <span className="text-[11px] text-emerald-600 font-bold mt-1 block">
+                  Save ₹589/year compared with 12 monthly payments (₹3,588/yr)
+                </span>
+              </div>
+              <div className="space-y-2.5 text-xs text-slate-700">
+                {[
+                  'Everything in Monthly included',
+                  'Priority email and support desk access',
+                  'Free printable QR counter stand PDF templates',
+                  'Multi-business profile management',
+                  'Continuous Google Review algorithm updates',
+                  'Authorized recurring payment mandate protection'
+                ].map((feat, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{feat}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <Link
+              to="/pricing"
+              className="w-full py-3.5 px-6 rounded-2xl font-bold text-xs sm:text-sm text-center bg-blue-600 hover:bg-blue-700 text-white shadow-md transition-all flex items-center justify-center gap-2 hover:scale-[1.01]"
+            >
+              <span>Get Started Yearly — Save ₹589</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
           </div>
         </div>
+
+        <p className="text-center text-xs text-slate-500">
+          All prices in Indian Rupees (INR). Payments processed securely via Cashfree Payments. Read our{' '}
+          <Link to="/subscription-terms" className="text-blue-600 underline">Subscription Terms</Link> and{' '}
+          <Link to="/refund-policy" className="text-blue-600 underline">Cancellation & Refund Policy</Link>.
+        </p>
       </section>
 
       {/* 7. Business Categories (Section 13) */}
@@ -488,14 +493,14 @@ export const LandingPage: React.FC = () => {
         </div>
       </section>
 
-      {/* 9.5 Section 8: Interested in ReviewFlow? Inquiry Form */}
+      {/* 9.5 Section 8: Interested in Qorbiq AI? Inquiry Form */}
       <section id="inquiry" className="py-20 px-6 max-w-4xl mx-auto space-y-8">
         <div className="text-center space-y-3">
           <span className="text-xs font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">
             Get In Touch
           </span>
           <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
-            Interested in ReviewFlow?
+            Interested in Qorbiq AI?
           </h2>
           <p className="text-sm sm:text-base text-slate-600 max-w-xl mx-auto leading-relaxed">
             Speak directly with our team to explore tailored QR setups, multi-branch plans, and custom AI experience modeling.
@@ -658,12 +663,12 @@ export const LandingPage: React.FC = () => {
         <div className="space-y-4">
           {[
             {
-              q: 'Does ReviewFlow AI automatically publish reviews to Google?',
-              a: 'Never. ReviewFlow AI assists the customer in drafting their genuine experience into a clear, editable review. The customer copies the draft, clicks Open Google Review, and independently decides whether to publish it on Google.'
+              q: 'Does Qorbiq AI automatically publish reviews to Google?',
+              a: 'Never. Qorbiq AI assists the customer in drafting their genuine experience into a clear, editable review. The customer copies the draft, clicks Open Google Review, and independently decides whether to publish it on Google.'
             },
             {
               q: 'Is there any review gating (filtering negative feedback)?',
-              a: 'No. ReviewFlow strictly complies with Google review guidelines. The "Open Google Review" button is always available and enabled, whether the customer had a positive, neutral, or critical experience.'
+              a: 'No. Qorbiq AI strictly complies with Google review guidelines. The "Open Google Review" button is always available and enabled, whether the customer had a positive, neutral, or critical experience.'
             },
             {
               q: 'What Google URL should I configure in the dashboard?',
@@ -675,7 +680,7 @@ export const LandingPage: React.FC = () => {
             },
             {
               q: 'Can I download vector QR codes for printing metal or acrylic stands?',
-              a: 'Yes. ReviewFlow provides one-click high-resolution PNG and vector SVG downloads, as well as a pre-designed printable table stand card template.'
+              a: 'Yes. Qorbiq AI provides one-click high-resolution PNG and vector SVG downloads, as well as a pre-designed printable table stand card template.'
             }
           ].map((faq, i) => (
             <div key={i} className="bg-white p-6 rounded-3xl border border-slate-200 space-y-2">
@@ -700,39 +705,15 @@ export const LandingPage: React.FC = () => {
               to="/pricing"
               className="inline-flex items-center gap-2 px-8 py-4 bg-white text-blue-700 font-bold text-sm sm:text-base rounded-2xl shadow-lg hover:bg-blue-50 transition-all hover:scale-[1.02]"
             >
-              <span>Start With ReviewFlow Pro</span>
+              <span>Get Started with Qorbiq AI</span>
               <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
         </div>
       </section>
 
-      {/* 12. Footer (Section 13) */}
-      <footer className="bg-slate-900 text-slate-400 py-12 px-6 border-t border-slate-800 text-xs">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold">
-              <QrCode className="w-4 h-4" />
-            </div>
-            <span className="font-bold text-sm text-white">ReviewFlow AI</span>
-          </div>
-
-          <div className="flex items-center gap-6 text-slate-400">
-            <Link to="/pricing" className="hover:text-white transition-colors">Pricing</Link>
-            <Link to="/login" className="hover:text-white transition-colors">Client Login</Link>
-            <Link to="/crm/login" className="text-emerald-400 hover:text-emerald-300 font-semibold transition-colors">
-              Sales CRM Portal
-            </Link>
-            <Link to="/super-admin/login" className="text-purple-400 hover:text-purple-300 font-semibold transition-colors">
-              Super Admin Gateway
-            </Link>
-          </div>
-
-          <div className="text-[11px] text-slate-500">
-            &copy; {new Date().getFullYear()} ReviewFlow AI. All rights reserved.
-          </div>
-        </div>
-      </footer>
+      {/* 12. Footer */}
+      <PublicFooter />
     </div>
   );
 };
