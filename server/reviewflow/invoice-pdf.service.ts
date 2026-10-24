@@ -213,9 +213,10 @@ export function generateInvoiceHtml(invoice: ReviewFlowInvoice): string {
         </div>
 
         <div style="font-size: 12px; color: #475569; line-height: 1.6;">
-          <strong style="color: #1e293b;">${escapeHtml(seller.legalBusinessName || 'Qorbiq AI Technologies')}</strong><br>
-          ${escapeHtml(seller.registeredAddress)}<br>
-          ${escapeHtml(seller.city)}, ${escapeHtml(seller.state)} - ${escapeHtml(seller.pinCode)}<br>
+          <strong style="color: #1e293b;">${escapeHtml(seller.legalBusinessName || 'SAI ANIL CHAKANKAR')}</strong><br>
+          <span style="font-size: 11px; color: #64748b;">(Brand: ${escapeHtml(seller.brandName || 'Qorbiq AI')})</span><br>
+          ${seller.registeredAddress ? `${escapeHtml(seller.registeredAddress)}<br>` : ''}
+          ${[seller.city || 'Pune', seller.state || 'Maharashtra', seller.pinCode].filter(Boolean).join(', ')}<br>
           ${seller.supportEmail ? `Email: ${escapeHtml(seller.supportEmail)}<br>` : ''}
           ${seller.supportPhone ? `Phone: ${escapeHtml(seller.supportPhone)}<br>` : ''}
           ${
@@ -373,7 +374,7 @@ export function generateInvoiceHtml(invoice: ReviewFlowInvoice): string {
             <strong style="color: #64748b; display: block; margin-bottom: 2px;">Terms & Conditions</strong>
             &bull; This is an authentic computer-generated digital tax invoice authorized by ${escapeHtml(seller.legalBusinessName)}.<br>
             &bull; Cashfree payment transaction reference: <span class="mono">${escapeHtml(invoice.paymentReference)}</span>.<br>
-            &bull; For any billing enquiries or receipt copies, contact <span class="mono">${escapeHtml(seller.supportEmail || 'support@qorbiq.ai')}</span>.
+            &bull; For any billing enquiries or receipt copies, contact <span class="mono">${escapeHtml(seller.supportEmail || 'chakankarsai@gmail.com')}</span>.
           </div>
           <div style="text-align: right; min-width: 150px;">
             <div style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">

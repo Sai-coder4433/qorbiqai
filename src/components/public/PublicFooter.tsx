@@ -36,13 +36,13 @@ interface ComplianceData {
 export const PublicFooter: React.FC = () => {
   const [compliance, setCompliance] = useState<ComplianceData>({
     brandName: 'Qorbiq AI',
-    legalBusinessName: 'Qorbiq AI',
-    supportEmail: 'support@qorbiq.ai',
-    supportPhone: '+91 98765 43210',
-    address: 'Level 4, Cyber City, Magarpatta',
+    legalBusinessName: 'SAI ANIL CHAKANKAR',
+    supportEmail: 'chakankarsai@gmail.com',
+    supportPhone: '+91 9960549106',
+    address: '',
     city: 'Pune',
     state: 'Maharashtra',
-    pinCode: '411028',
+    pinCode: '',
     country: 'India',
     supportHours: 'Monday – Friday, 10:00 AM – 6:00 PM IST',
     websiteUrl: 'https://qorbiq.ai'
@@ -231,7 +231,7 @@ export const PublicFooter: React.FC = () => {
                   </div>
                 </li>
               )}
-              {compliance.address && (
+              {compliance.address ? (
                 <li className="flex items-start gap-2">
                   <MapPin className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
                   <div>
@@ -241,7 +241,17 @@ export const PublicFooter: React.FC = () => {
                     </span>
                   </div>
                 </li>
-              )}
+              ) : (compliance.city || compliance.state) ? (
+                <li className="flex items-start gap-2">
+                  <MapPin className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-slate-500 block">Location</span>
+                    <span className="text-slate-300 leading-snug block">
+                      {[compliance.city, compliance.state, compliance.country].filter(Boolean).join(', ')}
+                    </span>
+                  </div>
+                </li>
+              ) : null}
               {compliance.supportHours && (
                 <li className="flex items-start gap-2">
                   <Clock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />

@@ -39,13 +39,13 @@ interface ComplianceSettings {
 export const ContactPage: React.FC = () => {
   const [settings, setSettings] = useState<ComplianceSettings>({
     brandName: 'Qorbiq AI',
-    legalBusinessName: 'Qorbiq AI',
-    supportEmail: 'support@qorbiq.ai',
-    supportPhone: '+91 98765 43210',
-    address: 'Level 4, Cyber City, Magarpatta',
+    legalBusinessName: 'SAI ANIL CHAKANKAR',
+    supportEmail: 'chakankarsai@gmail.com',
+    supportPhone: '+91 9960549106',
+    address: '',
     city: 'Pune',
     state: 'Maharashtra',
-    pinCode: '411028',
+    pinCode: '',
     country: 'India',
     supportHours: 'Monday – Friday, 10:00 AM – 6:00 PM IST',
     websiteUrl: 'https://qorbiq.ai',
@@ -187,6 +187,24 @@ export const ContactPage: React.FC = () => {
               </h2>
 
               <div className="space-y-5 text-xs text-slate-600">
+                {/* Legal Entity / Business Operator */}
+                <div className="flex items-start gap-3.5">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
+                    <Building2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-400 uppercase tracking-wider text-[10px] block">
+                      Legal Owner & Operator
+                    </span>
+                    <span className="text-sm font-black text-slate-900 block">
+                      {settings.legalBusinessName || 'SAI ANIL CHAKANKAR'}
+                    </span>
+                    <span className="text-slate-500 block mt-0.5 text-[11px]">
+                      Brand: <strong>{settings.brandName || 'Qorbiq AI'}</strong> • Individual / Proprietary SaaS Platform
+                    </span>
+                  </div>
+                </div>
+
                 {/* Email Channel */}
                 {settings.supportEmail && (
                   <div className="flex items-start gap-3.5">
@@ -227,32 +245,36 @@ export const ContactPage: React.FC = () => {
                         {settings.supportPhone}
                       </a>
                       <span className="text-slate-500 block mt-0.5 text-[11px]">
-                        Available during standard business hours.
+                        Available during standard business hours (10:00 AM – 6:00 PM IST).
                       </span>
                     </div>
                   </div>
                 )}
 
-                {/* Physical Operating Office */}
-                {settings.address && (
-                  <div className="flex items-start gap-3.5">
-                    <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600 shrink-0">
-                      <MapPin className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <span className="font-bold text-slate-400 uppercase tracking-wider text-[10px] block">
-                        Operating Address
-                      </span>
-                      <p className="text-slate-800 font-semibold leading-relaxed text-xs">
-                        {settings.address}
-                        {settings.city ? `, ${settings.city}` : ''}
-                        {settings.state ? `, ${settings.state}` : ''}
-                        {settings.pinCode ? ` - ${settings.pinCode}` : ''}
-                        {settings.country ? `, ${settings.country}` : ''}
-                      </p>
-                    </div>
+                {/* Physical Operating Office or Location */}
+                <div className="flex items-start gap-3.5">
+                  <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600 shrink-0">
+                    <MapPin className="w-5 h-5" />
                   </div>
-                )}
+                  <div>
+                    <span className="font-bold text-slate-400 uppercase tracking-wider text-[10px] block">
+                      Operating Location
+                    </span>
+                    <p className="text-slate-800 font-semibold leading-relaxed text-xs">
+                      {settings.address ? (
+                        <>
+                          {settings.address}
+                          {settings.city ? `, ${settings.city}` : ''}
+                          {settings.state ? `, ${settings.state}` : ''}
+                          {settings.pinCode ? ` - ${settings.pinCode}` : ''}
+                          {settings.country ? `, ${settings.country}` : ''}
+                        </>
+                      ) : (
+                        <>{[settings.city || 'Pune', settings.state || 'Maharashtra', settings.country || 'India'].filter(Boolean).join(', ')}</>
+                      )}
+                    </p>
+                  </div>
+                </div>
 
                 {/* Operating Business Hours */}
                 {settings.supportHours && (

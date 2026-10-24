@@ -1,7 +1,17 @@
 User-agent: *
 Allow: /
+Allow: /features
 Allow: /pricing
+Allow: /contact
+Allow: /contact-us
 Allow: /terms
+Allow: /terms-and-conditions
+Allow: /privacy
+Allow: /privacy-policy
+Allow: /refund-policy
+Allow: /cancellation-and-refund-policy
+Allow: /subscription-terms
+Allow: /billing-info
 Allow: /r/
 Allow: /review/
 
@@ -20,4 +30,4 @@ Disallow: /forgot-password
 Disallow: /reset-password
 Disallow: /verify-email
 
-Sitemap: https://reviewflow.ai/sitemap.xml
+Sitemap: https://qorbiq.ai/sitemap.xml

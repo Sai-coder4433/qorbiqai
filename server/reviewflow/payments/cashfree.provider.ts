@@ -92,7 +92,7 @@ export class CashfreeProvider implements IPaymentGatewayProvider {
 
     const paymentId = 'pay_cf_' + crypto.randomBytes(8).toString('hex');
     const customerPhone = this.formatPhoneNumber(options.customerPhone);
-    const customerEmail = (options.customerEmail || 'billing@qorbiq.ai').trim();
+    const customerEmail = (options.customerEmail || 'chakankarsai@gmail.com').trim();
     const customerName = (options.customerName || 'Subscriber').trim();
     const appBaseUrl = this.getAppBaseUrl();
 

@@ -53,13 +53,13 @@ export const SuperAdminSystemPage: React.FC = () => {
   // Cashfree Compliance & Checklist State
   const [complianceSettings, setComplianceSettings] = useState<any>({
     brandName: 'Qorbiq AI',
-    legalBusinessName: 'Qorbiq AI',
-    supportEmail: 'support@qorbiq.ai',
-    supportPhone: '+91 98765 43210',
-    address: 'Level 4, Cyber City, Magarpatta',
+    legalBusinessName: 'SAI ANIL CHAKANKAR',
+    supportEmail: 'chakankarsai@gmail.com',
+    supportPhone: '+91 9960549106',
+    address: '',
     city: 'Pune',
     state: 'Maharashtra',
-    pinCode: '411028',
+    pinCode: '',
     country: 'India',
     supportHours: 'Monday – Friday, 10:00 AM – 6:00 PM IST',
     websiteUrl: 'https://qorbiq.ai',
@@ -363,13 +363,13 @@ export const SuperAdminSystemPage: React.FC = () => {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-slate-700 font-semibold">Legal Registered Business Name *</label>
+                <label className="text-slate-700 font-semibold">Legal Registered Business / Owner Name *</label>
                 <input
                   type="text"
                   required
                   value={complianceSettings.legalBusinessName || ''}
                   onChange={e => setComplianceSettings({ ...complianceSettings, legalBusinessName: e.target.value })}
-                  placeholder="e.g. Qorbiq AI / Registered Entity"
+                  placeholder="e.g. SAI ANIL CHAKANKAR"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-900 focus:border-blue-600 outline-none"
                 />
               </div>
@@ -381,7 +381,7 @@ export const SuperAdminSystemPage: React.FC = () => {
                   required
                   value={complianceSettings.supportEmail || ''}
                   onChange={e => setComplianceSettings({ ...complianceSettings, supportEmail: e.target.value })}
-                  placeholder="e.g. support@qorbiq.ai"
+                  placeholder="e.g. chakankarsai@gmail.com"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-900 focus:border-blue-600 outline-none"
                 />
               </div>
@@ -393,19 +393,18 @@ export const SuperAdminSystemPage: React.FC = () => {
                   required
                   value={complianceSettings.supportPhone || ''}
                   onChange={e => setComplianceSettings({ ...complianceSettings, supportPhone: e.target.value })}
-                  placeholder="e.g. +91 98765 43210"
+                  placeholder="e.g. +91 9960549106"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-900 focus:border-blue-600 outline-none"
                 />
               </div>
 
               <div className="space-y-1.5 sm:col-span-2">
-                <label className="text-slate-700 font-semibold">Registered Physical Address *</label>
+                <label className="text-slate-700 font-semibold">Registered Physical Address</label>
                 <input
                   type="text"
-                  required
                   value={complianceSettings.address || ''}
                   onChange={e => setComplianceSettings({ ...complianceSettings, address: e.target.value })}
-                  placeholder="e.g. Level 4, Cyber City, Magarpatta"
+                  placeholder="e.g. Operational Address (Optional / Leave empty if not applicable)"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-900 focus:border-blue-600 outline-none"
                 />
               </div>

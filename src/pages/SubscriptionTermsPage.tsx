@@ -20,11 +20,15 @@ import { freshTestApi } from '../lib/fresh-test-api.ts';
 export const SubscriptionTermsPage: React.FC = () => {
   const [compliance, setCompliance] = useState({
     brandName: 'Qorbiq AI',
-    legalBusinessName: 'Qorbiq AI',
-    supportEmail: 'support@qorbiq.ai',
-    address: 'Level 4, Cyber City, Magarpatta, Pune, Maharashtra 411028',
+    legalBusinessName: 'SAI ANIL CHAKANKAR',
+    supportEmail: 'chakankarsai@gmail.com',
+    supportPhone: '+91 9960549106',
+    address: '',
+    city: 'Pune',
+    state: 'Maharashtra',
+    country: 'India',
     policyEffectiveDate: '2026-01-01',
-    policyLastUpdated: '2026-10-23'
+    policyLastUpdated: '2026-10-24'
   });
 
   useEffect(() => {

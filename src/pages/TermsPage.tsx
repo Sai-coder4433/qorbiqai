@@ -21,11 +21,15 @@ export const TermsPage: React.FC = () => {
   const [activeSection, setActiveSection] = useState('section-1');
   const [compliance, setCompliance] = useState({
     brandName: 'Qorbiq AI',
-    legalBusinessName: 'Qorbiq AI',
-    supportEmail: 'support@qorbiq.ai',
-    address: 'Level 4, Cyber City, Magarpatta, Pune, Maharashtra 411028',
+    legalBusinessName: 'SAI ANIL CHAKANKAR',
+    supportEmail: 'chakankarsai@gmail.com',
+    supportPhone: '+91 9960549106',
+    address: '',
+    city: 'Pune',
+    state: 'Maharashtra',
+    country: 'India',
     policyEffectiveDate: '2026-01-01',
-    policyLastUpdated: '2026-10-23'
+    policyLastUpdated: '2026-10-24'
   });
 
   useEffect(() => {
@@ -161,7 +165,7 @@ export const TermsPage: React.FC = () => {
                 1. Introduction and Acceptance
               </h2>
               <p>
-                Welcome to <strong>Qorbiq AI</strong> ("we", "our", "us", or "Platform"). These Terms & Conditions ("Terms") constitute a legally binding agreement between the registered business user, subscriber, or representative ("Customer", "User", or "You") and the legal operator of Qorbiq AI (<strong>{compliance.legalBusinessName}</strong>).
+                Welcome to <strong>Qorbiq AI</strong> ("we", "our", "us", or "Platform"). These Terms & Conditions ("Terms") constitute a legally binding agreement between the registered business user, subscriber, or representative ("Customer", "User", or "You") and **{compliance.legalBusinessName || 'SAI ANIL CHAKANKAR'}** (operating the brand and product **{compliance.brandName || 'Qorbiq AI'}**).
               </p>
               <p>
                 By registering an account, accessing our dashboard, configuring dynamic QR codes, drafting review responses with our AI engine, or purchasing a subscription, you confirm that you have read, understood, and agreed to be bound by these Terms and our companion <Link to="/privacy" className="text-blue-600 hover:underline font-bold">Privacy Policy</Link> and <Link to="/refund-policy" className="text-blue-600 hover:underline font-bold">Cancellation & Refund Policy</Link>. If you do not agree to these terms, you must discontinue use immediately.
@@ -455,10 +459,13 @@ export const TermsPage: React.FC = () => {
                 For legal notices, contract enquiries, or questions regarding these Terms, please contact our administrative office:
               </p>
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5 text-xs text-slate-700">
-                <p><strong>Entity / Operator:</strong> {compliance.legalBusinessName}</p>
-                <p><strong>Public Brand:</strong> {compliance.brandName}</p>
-                <p><strong>Email:</strong> <a href={`mailto:${compliance.supportEmail}`} className="text-blue-600 hover:underline">{compliance.supportEmail}</a></p>
-                <p><strong>Address:</strong> {compliance.address}</p>
+                <p><strong>Legal Owner & Operator:</strong> {compliance.legalBusinessName || 'SAI ANIL CHAKANKAR'}</p>
+                <p><strong>Public Brand / Product:</strong> {compliance.brandName || 'Qorbiq AI'}</p>
+                <p><strong>Support & Legal Email:</strong> <a href={`mailto:${compliance.supportEmail || 'chakankarsai@gmail.com'}`} className="text-blue-600 hover:underline font-semibold">{compliance.supportEmail || 'chakankarsai@gmail.com'}</a></p>
+                {compliance.supportPhone && (
+                  <p><strong>Contact Telephone:</strong> <a href={`tel:${compliance.supportPhone.replace(/\s+/g, '')}`} className="text-blue-600 hover:underline font-semibold">{compliance.supportPhone}</a></p>
+                )}
+                <p><strong>Operating Location:</strong> {compliance.address ? compliance.address : [compliance.city || 'Pune', compliance.state || 'Maharashtra', compliance.country || 'India'].filter(Boolean).join(', ')}</p>
               </div>
             </section>
 

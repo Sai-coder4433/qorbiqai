@@ -21,11 +21,15 @@ export const PrivacyPolicyPage: React.FC = () => {
   const [activeSection, setActiveSection] = useState('section-1');
   const [compliance, setCompliance] = useState({
     brandName: 'Qorbiq AI',
-    legalBusinessName: 'Qorbiq AI',
-    supportEmail: 'support@qorbiq.ai',
-    address: 'Level 4, Cyber City, Magarpatta, Pune, Maharashtra 411028',
+    legalBusinessName: 'SAI ANIL CHAKANKAR',
+    supportEmail: 'chakankarsai@gmail.com',
+    supportPhone: '+91 9960549106',
+    address: '',
+    city: 'Pune',
+    state: 'Maharashtra',
+    country: 'India',
     policyEffectiveDate: '2026-01-01',
-    policyLastUpdated: '2026-10-23'
+    policyLastUpdated: '2026-10-24'
   });
 
   useEffect(() => {
@@ -157,7 +161,7 @@ export const PrivacyPolicyPage: React.FC = () => {
                 1. Who Operates Qorbiq AI
               </h2>
               <p>
-                Qorbiq AI ("we", "our", or "us") is operated by <strong>{compliance.legalBusinessName}</strong>, having its principal operational location at {compliance.address}. We act as the data controller for account registration and billing information, and as a data processor for business review assistance data configured by our subscribers.
+                Qorbiq AI ("we", "our", or "us") is a business software tool operated by <strong>{compliance.legalBusinessName || 'SAI ANIL CHAKANKAR'}</strong> (operating under the product name <strong>{compliance.brandName || 'Qorbiq AI'}</strong>, situated in {[compliance.city || 'Pune', compliance.state || 'Maharashtra', compliance.country || 'India'].filter(Boolean).join(', ')}). We act as the data controller for account registration and billing information, and as a data processor for business review assistance data configured by our subscribers.
               </p>
             </section>
 
@@ -395,10 +399,13 @@ export const PrivacyPolicyPage: React.FC = () => {
                 If you have questions, concerns, or requests regarding this Privacy Policy or wish to exercise your data protection rights, please contact our Grievance Officer:
               </p>
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5 text-xs text-slate-700">
-                <p><strong>Platform:</strong> {compliance.brandName}</p>
-                <p><strong>Operating Entity:</strong> {compliance.legalBusinessName}</p>
-                <p><strong>Privacy Email:</strong> <a href={`mailto:${compliance.supportEmail}`} className="text-blue-600 hover:underline">{compliance.supportEmail}</a></p>
-                <p><strong>Postal Address:</strong> {compliance.address}</p>
+                <p><strong>Platform / Brand:</strong> {compliance.brandName || 'Qorbiq AI'}</p>
+                <p><strong>Legal Owner & Grievance Officer:</strong> {compliance.legalBusinessName || 'SAI ANIL CHAKANKAR'}</p>
+                <p><strong>Privacy Email:</strong> <a href={`mailto:${compliance.supportEmail || 'chakankarsai@gmail.com'}`} className="text-blue-600 hover:underline font-semibold">{compliance.supportEmail || 'chakankarsai@gmail.com'}</a></p>
+                {compliance.supportPhone && (
+                  <p><strong>Contact Telephone:</strong> <a href={`tel:${compliance.supportPhone.replace(/\s+/g, '')}`} className="text-blue-600 hover:underline font-semibold">{compliance.supportPhone}</a></p>
+                )}
+                <p><strong>Location:</strong> {compliance.address ? compliance.address : [compliance.city || 'Pune', compliance.state || 'Maharashtra', compliance.country || 'India'].filter(Boolean).join(', ')}</p>
               </div>
             </section>
           </main>

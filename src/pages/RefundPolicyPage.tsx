@@ -22,11 +22,15 @@ export const RefundPolicyPage: React.FC = () => {
   const [activeSection, setActiveSection] = useState('section-a');
   const [compliance, setCompliance] = useState({
     brandName: 'Qorbiq AI',
-    legalBusinessName: 'Qorbiq AI',
-    supportEmail: 'support@qorbiq.ai',
-    address: 'Level 4, Cyber City, Magarpatta, Pune, Maharashtra 411028',
+    legalBusinessName: 'SAI ANIL CHAKANKAR',
+    supportEmail: 'chakankarsai@gmail.com',
+    supportPhone: '+91 9960549106',
+    address: '',
+    city: 'Pune',
+    state: 'Maharashtra',
+    country: 'India',
     policyEffectiveDate: '2026-01-01',
-    policyLastUpdated: '2026-10-23',
+    policyLastUpdated: '2026-10-24',
     refundWindowDays: 7
   });
 
@@ -351,10 +355,13 @@ export const RefundPolicyPage: React.FC = () => {
               </p>
 
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5 text-xs text-slate-700">
-                <p><strong>Business Brand:</strong> {compliance.brandName}</p>
-                <p><strong>Operating Entity:</strong> {compliance.legalBusinessName}</p>
-                <p><strong>Billing Support Email:</strong> <a href={`mailto:${compliance.supportEmail}`} className="text-blue-600 hover:underline">{compliance.supportEmail}</a></p>
-                <p><strong>Physical Address:</strong> {compliance.address}</p>
+                <p><strong>Business Brand:</strong> {compliance.brandName || 'Qorbiq AI'}</p>
+                <p><strong>Legal Owner & Operator:</strong> {compliance.legalBusinessName || 'SAI ANIL CHAKANKAR'}</p>
+                <p><strong>Billing & Cancellation Email:</strong> <a href={`mailto:${compliance.supportEmail || 'chakankarsai@gmail.com'}`} className="text-blue-600 hover:underline font-semibold">{compliance.supportEmail || 'chakankarsai@gmail.com'}</a></p>
+                {compliance.supportPhone && (
+                  <p><strong>Helpline Telephone:</strong> <a href={`tel:${compliance.supportPhone.replace(/\s+/g, '')}`} className="text-blue-600 hover:underline font-semibold">{compliance.supportPhone}</a></p>
+                )}
+                <p><strong>Operating Location:</strong> {compliance.address ? compliance.address : [compliance.city || 'Pune', compliance.state || 'Maharashtra', compliance.country || 'India'].filter(Boolean).join(', ')}</p>
                 <p><strong>Operating Hours:</strong> Monday – Friday, 10:00 AM – 6:00 PM IST</p>
               </div>
             </section>

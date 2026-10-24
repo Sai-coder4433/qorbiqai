@@ -353,12 +353,12 @@ export const SuperAdminInvoicesPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Seller & Customer Breakdown */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
               <div>
-                <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px] block">Sold By (Platform)</span>
-                <div className="font-bold text-slate-900 mt-1">{selectedInvoice.sellerDetails?.companyName || 'Qorbiq AI Technologies'}</div>
-                <div className="text-slate-600 mt-0.5 whitespace-pre-line">{selectedInvoice.sellerDetails?.address}</div>
+                <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px] block">Sold By (Platform Operator)</span>
+                <div className="font-bold text-slate-900 mt-1">{selectedInvoice.sellerDetails?.legalBusinessName || selectedInvoice.sellerDetails?.companyName || 'SAI ANIL CHAKANKAR'}</div>
+                <div className="text-[11px] text-slate-500 font-medium">Brand: {selectedInvoice.sellerDetails?.brandName || 'Qorbiq AI'}</div>
+                <div className="text-slate-600 mt-0.5 whitespace-pre-line">{selectedInvoice.sellerDetails?.registeredAddress || selectedInvoice.sellerDetails?.address || [selectedInvoice.sellerDetails?.city || 'Pune', selectedInvoice.sellerDetails?.state || 'Maharashtra'].join(', ')}</div>
                 {selectedInvoice.sellerDetails?.gstin && (
                   <div className="text-blue-700 font-mono mt-1 font-semibold">
                     GSTIN: {selectedInvoice.sellerDetails.gstin}

@@ -1490,13 +1490,13 @@ class DatabaseService {
         this.data.organizationStatuses['org_main_001'] = { status: 'ACTIVE', updatedAt: now };
       }
       if (!this.data.organizationOwners['org_main_001']) {
-        this.data.organizationOwners['org_main_001'] = { name: 'Sai Chakankar', email: 'chakankarsai@gmail.com', phone: '+91 98220 14820' };
+        this.data.organizationOwners['org_main_001'] = { name: 'SAI ANIL CHAKANKAR', email: 'chakankarsai@gmail.com', phone: '+91 9960549106' };
       }
       if (!this.data.organizationFeatures['org_main_001'] || this.data.organizationFeatures['org_main_001'].length === 0) {
         this.data.organizationFeatures['org_main_001'] = DEFAULT_FEATURES_CATALOG.map(f => ({
           ...f,
           lastChanged: new Date(Date.now() - 86400000 * 2).toISOString(),
-          changedBy: 'Sai Chakankar (Super Admin)'
+          changedBy: 'SAI ANIL CHAKANKAR (Super Admin)'
         }));
       }
       if (!this.data.reviewOnlineSettings['biz_001']) {
@@ -1511,7 +1511,7 @@ class DatabaseService {
           negativeFeedbackTitle: 'We want to make this right',
           notifyOnNegative: true,
           notifyEmail: 'chakankarsai@gmail.com',
-          notifyWhatsapp: '+91 98220 14820',
+          notifyWhatsapp: '+91 9960549106',
           promptChips: ['Prompt Delivery', 'Genuine ISI Certified', 'Industrial Switchgear', 'Helpful Staff', 'Fair Pricing', 'Licensed Team'],
           showGoogleLogo: true
         };
@@ -1896,7 +1896,7 @@ class DatabaseService {
     const org = this.data.organizations.find(o => o.id === organizationId);
     if (!org) return null;
 
-    const owner = this.data.organizationOwners[org.id] || { name: 'Sai Chakankar', email: 'chakankarsai@gmail.com', phone: '+91 98220 14820' };
+    const owner = this.data.organizationOwners[org.id] || { name: 'SAI ANIL CHAKANKAR', email: 'chakankarsai@gmail.com', phone: '+91 9960549106' };
     const statusObj = this.data.organizationStatuses[org.id] || { status: 'ACTIVE', updatedAt: org.createdAt };
     const sub = this.getSubscription(org.id);
     const businesses = this.data.businesses.filter(b => b.organizationId === org.id);
