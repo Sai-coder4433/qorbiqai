@@ -7,12 +7,19 @@ import {
   signOut,
   sendPasswordResetEmail,
   sendEmailVerification,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
   User as FirebaseUser
 } from 'firebase/auth';
 import { auth, googleAuthProvider, isFirebaseConfigured } from './firebase.ts';
-import { fetchApi } from './api.ts';
 import { freshTestApi } from './fresh-test-api.ts';
-import { syncUserProfileToFirestore, syncBusinessToFirestore } from './firestore-sync.ts';
+import {
+  syncUserProfileToFirestore,
+  syncBusinessToFirestore,
+  loadUserProfileFromFirestore,
+  recoverOwnerProfileInFirestore
+} from './firestore-sync.ts';
 
 export type UserRole =
   | 'SUPER_ADMIN'
@@ -27,6 +34,7 @@ export interface AuthUser {
   email: string | null;
   displayName: string | null;
   photoURL?: string | null;
+  phone?: string | null;
   role: UserRole;
   organizationId: string;
   status: 'active' | 'invited' | 'suspended';
@@ -56,7 +64,7 @@ interface AuthContextType {
   error: string | null;
   onboardingStatus: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
   isOnboardingComplete: boolean;
-  loginWithEmail: (email: string, pass: string) => Promise<AuthUser>;
+  loginWithEmail: (email: string, pass: string, rememberMe?: boolean) => Promise<AuthUser>;
   signupWithEmail: (
     email: string,
     pass: string,
@@ -120,36 +128,43 @@ const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
   ]
 };
 
-function formatFirebaseAuthError(error: any): string {
+// Accurate user-friendly Firebase Error Mapping (Requirement 4)
+export function formatFirebaseAuthError(error: any): string {
   const code = error?.code || '';
+  if (code === 'auth/invalid-credential') {
+    return 'Incorrect email or password. Please verify your credentials and try again.';
+  }
   if (code === 'auth/user-not-found') {
-    return 'No account exists with this email.';
+    return 'No registered account found with this email. Please click "Create New Account" below.';
   }
   if (code === 'auth/wrong-password') {
-    return 'Incorrect password.';
+    return 'Incorrect password. If you forgot your password, please use the "Forgot password?" link below.';
   }
-  if (code === 'auth/invalid-credential') {
-    return 'Email or password is incorrect.';
+  if (code === 'auth/invalid-email') {
+    return 'Please enter a valid email address (e.g. name@company.com).';
+  }
+  if (code === 'auth/user-disabled') {
+    return 'This account has been temporarily disabled. Please contact Qorbiq AI support.';
   }
   if (code === 'auth/too-many-requests') {
-    return 'Too many attempts. Please try again later.';
+    return 'Too many failed login attempts. Access has been temporarily restricted for security. Please wait a moment or reset your password.';
   }
   if (code === 'auth/network-request-failed') {
-    return 'Network error. Check your internet connection and try again.';
+    return 'Network connection issue. Please check your internet connection and try again.';
   }
   if (code === 'auth/email-already-in-use') {
-    return 'An account already exists with this email.';
+    return 'This email address is already registered. Please Sign In below or use Forgot Password.';
   }
   if (code === 'auth/weak-password') {
     return 'Password is too weak. Please use at least 6 characters.';
   }
-  if (code === 'auth/invalid-email') {
-    return 'Please enter a valid email address.';
+  if (code === 'auth/popup-closed-by-user') {
+    return 'Sign in window was closed before completing.';
   }
-  if (code === 'auth/configuration-not-found') {
-    return 'Firebase Authentication is initializing or not yet enabled in the Firebase Console. Please enable Email/Password sign-in in Firebase.';
+  if (code === 'permission-denied') {
+    return 'Access denied by database security rules. Please verify your credentials.';
   }
-  return error?.message || 'Authentication failed. Please check your credentials.';
+  return error?.message || 'Authentication failed. Please verify your credentials.';
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -169,82 +184,95 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * Authoritative user synchronization from Firebase User and Firestore Profile
+   */
   const syncBackendUser = async (fbUser: FirebaseUser): Promise<AuthUser> => {
-    try {
-      const res = await fetch('/api/auth/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          uid: fbUser.uid,
-          email: fbUser.email,
-          displayName: fbUser.displayName || fbUser.email?.split('@')[0]
-        })
+    const cleanEmail = (fbUser.email || '').toLowerCase().trim();
+    const isSuperAdmin =
+      cleanEmail === 'chakankarsai@gmail.com' ||
+      cleanEmail === 'chakankarsai@gmail.co' ||
+      fbUser.uid === '6d6krJBCmDVgpwDhmhzDNI72pYa2';
+
+    // 1. Fetch Owner Profile from Firestore
+    let profile = await loadUserProfileFromFirestore(fbUser.uid);
+
+    // 2. Auto-heal missing profile if user exists in Firebase Auth but missing in Firestore (Requirement 2, 3, 7)
+    if (!profile) {
+      profile = await recoverOwnerProfileInFirestore({
+        uid: fbUser.uid,
+        email: cleanEmail,
+        displayName: fbUser.displayName || cleanEmail.split('@')[0],
+        phoneNumber: fbUser.phoneNumber || ''
       });
-      let data: any = {};
-      try {
-        const text = await res.text();
-        if (text && text.trim()) data = JSON.parse(text);
-      } catch {
-        // Safe fallback
-      }
-      if (data && data.user) {
-        const hasCompletedOnboarding = data.user.onboardingStatus === 'COMPLETED';
-        const authUser: AuthUser = {
-          uid: data.user.uid,
-          email: data.user.email,
-          displayName: data.user.displayName,
-          photoURL: fbUser.photoURL,
-          role: data.user.role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'CLIENT',
-          organizationId: 'org_' + data.user.uid,
-          status: data.user.status || 'active',
-          language: 'en',
-          timezone: 'UTC',
-          emailVerified: fbUser.emailVerified ?? data.user.emailVerified ?? false,
-          onboardingStatus: hasCompletedOnboarding ? 'COMPLETED' : (data.user.onboardingStatus || 'NOT_STARTED'),
-          onboardingCompletedAt: data.user.onboardingCompletedAt || (hasCompletedOnboarding ? new Date().toISOString() : null),
-          onboardingVersion: data.user.onboardingVersion || 1
-        };
-        setUser(authUser);
-        // Sync to Firestore without blocking
-        syncUserProfileToFirestore(authUser).catch(() => {});
-        return authUser;
-      }
-    } catch (err: any) {
-      console.warn('[Auth] Server sync fallback:', err?.message);
     }
 
-    const fallbackUser: AuthUser = {
+    const hasCompletedOnboarding =
+      profile?.onboardingStatus === 'COMPLETED' || isSuperAdmin;
+
+    const authUser: AuthUser = {
       uid: fbUser.uid,
-      email: fbUser.email,
-      displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
-      photoURL: fbUser.photoURL,
-      role: 'CLIENT',
+      email: cleanEmail,
+      displayName: profile?.fullName || profile?.displayName || fbUser.displayName || cleanEmail.split('@')[0] || 'Business Owner',
+      photoURL: fbUser.photoURL || null,
+      phone: profile?.mobile || profile?.phone || fbUser.phoneNumber || '',
+      role: isSuperAdmin ? 'SUPER_ADMIN' : 'CLIENT',
       organizationId: 'org_' + fbUser.uid,
-      status: 'active',
+      status: (profile?.status as any) || 'active',
       language: 'en',
       timezone: 'UTC',
-      emailVerified: fbUser.emailVerified,
-      onboardingStatus: 'NOT_STARTED',
-      onboardingCompletedAt: null,
+      emailVerified: fbUser.emailVerified ?? false,
+      onboardingStatus: hasCompletedOnboarding ? 'COMPLETED' : (profile?.onboardingStatus || 'NOT_STARTED'),
+      onboardingCompletedAt: profile?.onboardingCompletedAt || (hasCompletedOnboarding ? new Date().toISOString() : null),
       onboardingVersion: 1
     };
-    setUser(fallbackUser);
-    syncUserProfileToFirestore(fallbackUser).catch(() => {});
-    return fallbackUser;
+
+    setUser(authUser);
+    try {
+      localStorage.setItem('saas_auth_user', JSON.stringify(authUser));
+    } catch {}
+
+    // Non-blocking sync to edge API
+    fetch('/api/auth/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        uid: fbUser.uid,
+        email: cleanEmail,
+        displayName: authUser.displayName
+      })
+    }).catch(() => {});
+
+    return authUser;
   };
 
+  /**
+   * Session Initialization via onAuthStateChanged (Requirement 6)
+   */
   useEffect(() => {
     if (!auth || !isFirebaseConfigured) {
       setLoading(false);
       return;
     }
 
+    // Explicitly configure local persistence
+    if (typeof window !== 'undefined') {
+      setPersistence(auth, browserLocalPersistence).catch(() => {});
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       setFirebaseUser(fbUser);
       if (fbUser) {
-        await syncBackendUser(fbUser);
+        try {
+          await syncBackendUser(fbUser);
+        } catch (err) {
+          console.warn('[Auth] Sync warning:', err);
+        }
       } else {
         setUser(null);
+        try {
+          localStorage.removeItem('saas_auth_user');
+        } catch {}
       }
       setLoading(false);
     });
@@ -252,99 +280,57 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, []);
 
-  const loginWithEmail = async (email: string, pass: string): Promise<AuthUser> => {
+  /**
+   * Client Login with Firebase Authentication as sole authority (Requirement 3 & 4)
+   */
+  const loginWithEmail = async (email: string, pass: string, rememberMe = true): Promise<AuthUser> => {
     setError(null);
     const cleanEmail = email.trim().toLowerCase();
-    const cleanPass = pass.trim();
+    const cleanPass = pass;
 
-    // Primary: Firebase Authentication as real source of truth for user credentials (Section 3, 5, 6)
-    if (auth && isFirebaseConfigured) {
-      try {
-        const cred = await signInWithEmailAndPassword(auth, cleanEmail, pass);
-        const synced = await syncBackendUser(cred.user);
-        return synced;
-      } catch (fbErr: any) {
-        // Try with trimmed password if different
-        if (cleanPass !== pass) {
-          try {
-            const cred = await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
-            const synced = await syncBackendUser(cred.user);
-            return synced;
-          } catch {}
-        }
-        // Try with original email casing
-        if (email.trim() !== cleanEmail) {
-          try {
-            const cred = await signInWithEmailAndPassword(auth, email.trim(), pass);
-            const synced = await syncBackendUser(cred.user);
-            return synced;
-          } catch {}
-        }
-
-        // Secondary fallback to server login if Firebase credentials have sync lag or mismatch
-        try {
-          const res = await freshTestApi.clientLogin({ email: cleanEmail, password: pass });
-          if (res && res.user) {
-            const hasCompleted = res.user.onboardingStatus === 'COMPLETED' || Boolean(res.business?.onboardingCompleted);
-            const authUser: AuthUser = {
-              uid: res.user.uid,
-              email: res.user.email,
-              displayName: res.user.displayName,
-              role: res.user.role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'CLIENT',
-              organizationId: 'org_' + res.user.uid,
-              status: res.user.status || 'active',
-              language: 'en',
-              timezone: 'UTC',
-              emailVerified: res.user.emailVerified ?? false,
-              onboardingStatus: hasCompleted ? 'COMPLETED' : (res.user.onboardingStatus || 'NOT_STARTED'),
-              onboardingCompletedAt: res.user.onboardingCompletedAt || (hasCompleted ? new Date().toISOString() : null),
-              onboardingVersion: res.user.onboardingVersion || 1
-            };
-            setUser(authUser);
-            localStorage.setItem('saas_auth_user', JSON.stringify(authUser));
-            return authUser;
-          }
-        } catch {
-          // If server login also fails, throw formatted error
-        }
-
-        const formatted = formatFirebaseAuthError(fbErr);
-        setError(formatted);
-        throw new Error(formatted);
-      }
+    if (!cleanEmail) {
+      const err = 'Please enter your registered email address.';
+      setError(err);
+      throw new Error(err);
+    }
+    if (!cleanPass) {
+      const err = 'Please enter your account password.';
+      setError(err);
+      throw new Error(err);
     }
 
-    // Secondary: Server-backed ReviewFlow authentication
+    if (!auth || !isFirebaseConfigured) {
+      throw new Error('Authentication service is not configured. Please check Firebase initialization.');
+    }
+
+    // Set persistence based on "Remember Me" option
     try {
-      const res = await freshTestApi.clientLogin({ email, password: pass });
-      if (res && res.user) {
-        const hasCompletedOnboarding = res.user.onboardingStatus === 'COMPLETED' || Boolean(res.business?.onboardingCompleted);
-        const authUser: AuthUser = {
-          uid: res.user.uid,
-          email: res.user.email,
-          displayName: res.user.displayName,
-          role: res.user.role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'CLIENT',
-          organizationId: 'org_' + res.user.uid,
-          status: res.user.status || 'active',
-          language: 'en',
-          timezone: 'UTC',
-          emailVerified: res.user.emailVerified ?? false,
-          onboardingStatus: hasCompletedOnboarding ? 'COMPLETED' : (res.user.onboardingStatus || 'NOT_STARTED'),
-          onboardingCompletedAt: res.user.onboardingCompletedAt || (hasCompletedOnboarding ? new Date().toISOString() : null),
-          onboardingVersion: res.user.onboardingVersion || 1
-        };
-        setUser(authUser);
-        localStorage.setItem('saas_auth_user', JSON.stringify(authUser));
-        return authUser;
+      await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
+    } catch {}
+
+    try {
+      const cred = await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
+      const synced = await syncBackendUser(cred.user);
+      return synced;
+    } catch (fbErr: any) {
+      // Defensive retry with trimmed password if user accidentally copy-pasted with trailing space
+      if (cleanPass !== cleanPass.trim()) {
+        try {
+          const cred = await signInWithEmailAndPassword(auth, cleanEmail, cleanPass.trim());
+          const synced = await syncBackendUser(cred.user);
+          return synced;
+        } catch {}
       }
-    } catch (err: any) {
-      const msg = err.message || 'Login failed. Please check your credentials.';
-      setError(msg);
-      throw new Error(msg);
+
+      const formatted = formatFirebaseAuthError(fbErr);
+      setError(formatted);
+      throw new Error(formatted);
     }
-    throw new Error('Login failed: invalid response.');
   };
 
+  /**
+   * Client Account Signup with Firebase Auth & Firestore Profile (Requirement 2 & 7)
+   */
   const signupWithEmail = async (
     email: string,
     pass: string,
@@ -352,146 +338,132 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     businessName?: string,
     phone?: string,
     termsAccepted?: boolean
-  ) => {
+  ): Promise<{ user: AuthUser; shopId: string }> => {
     setError(null);
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanName = name.trim();
+    const cleanPhone = (phone || '').trim();
+    const cleanBiz = (businessName || '').trim();
 
-    let firebaseUid: string | undefined;
-
-    // 1. Attempt Firebase Auth user creation or sign-in if configured
-    if (auth && isFirebaseConfigured) {
-      try {
-        let cred: any;
-        try {
-          cred = await createUserWithEmailAndPassword(auth, email.trim(), pass);
-          try {
-            await sendEmailVerification(cred.user);
-          } catch {
-            // ignore verification send fail
-          }
-        } catch (createErr: any) {
-          if (createErr?.code === 'auth/email-already-in-use') {
-            try {
-              cred = await signInWithEmailAndPassword(auth, email.trim(), pass);
-            } catch {
-              // Firebase has email with different password; continue with authoritative server update
-            }
-          } else if (createErr?.code === 'auth/weak-password') {
-            throw new Error('Password must be at least 6 characters long.');
-          } else if (createErr?.code === 'auth/invalid-email') {
-            throw new Error('Please enter a valid email address.');
-          } else {
-            console.warn('[Auth] Firebase signup notice:', createErr?.message);
-          }
-        }
-        if (cred?.user?.uid) {
-          firebaseUid = cred.user.uid;
-        }
-      } catch (fbErr: any) {
-        if (fbErr.message?.includes('Password') || fbErr.message?.includes('email address')) {
-          setError(fbErr.message);
-          throw fbErr;
-        }
-        console.warn('[Auth] Firebase signup notice:', fbErr?.message);
-      }
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      const msg = 'Please enter a valid email address.';
+      setError(msg);
+      throw new Error(msg);
+    }
+    if (!pass || pass.length < 6) {
+      const msg = 'Password must be at least 6 characters long.';
+      setError(msg);
+      throw new Error(msg);
+    }
+    if (!cleanName) {
+      const msg = 'Please enter your full name.';
+      setError(msg);
+      throw new Error(msg);
     }
 
-    // 2. Authoritative server registration (always updates/creates and logs in)
+    if (!auth || !isFirebaseConfigured) {
+      throw new Error('Firebase Authentication is not available. Please verify configuration.');
+    }
+
+    // Ensure session persistence
     try {
-      const res = await freshTestApi.clientSignup({
+      await setPersistence(auth, browserLocalPersistence);
+    } catch {}
+
+    let cred: any;
+    try {
+      cred = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
+    } catch (createErr: any) {
+      const formatted = formatFirebaseAuthError(createErr);
+      setError(formatted);
+      throw new Error(formatted);
+    }
+
+    const firebaseUid = cred.user.uid;
+
+    // Send verification email non-blocking
+    try {
+      await sendEmailVerification(cred.user);
+    } catch {}
+
+    // Create Owner & User profile in Firestore (Requirement 2 & 7)
+    await syncUserProfileToFirestore({
+      uid: firebaseUid,
+      ownerId: firebaseUid,
+      fullName: cleanName,
+      displayName: cleanName,
+      email: cleanEmail,
+      mobile: cleanPhone,
+      phone: cleanPhone,
+      role: 'BUSINESS_OWNER',
+      status: 'active',
+      accountStatus: 'active',
+      profileCompleted: true,
+      onboardingStatus: 'NOT_STARTED'
+    });
+
+    // Create initial Shop record in Firestore
+    const shopId = `biz_${firebaseUid}`;
+    await syncBusinessToFirestore({
+      id: shopId,
+      ownerUid: firebaseUid,
+      businessName: cleanBiz || `${cleanName}'s Store`,
+      category: 'Retail & Store',
+      description: '',
+      city: '',
+      state: '',
+      country: 'India',
+      primaryLanguage: 'en',
+      googleReviewUrl: '',
+      phone: cleanPhone,
+      onboardingStatus: 'NOT_STARTED',
+      onboardingCompleted: false
+    });
+
+    // Sync to backend edge API
+    try {
+      await freshTestApi.clientSignup({
         uid: firebaseUid,
-        email: email.trim().toLowerCase(),
+        email: cleanEmail,
         password: pass,
-        name: name.trim(),
-        businessName: businessName?.trim(),
-        phone: phone?.trim(),
+        name: cleanName,
+        businessName: cleanBiz,
+        phone: cleanPhone,
         termsAccepted: termsAccepted ?? true,
         emailVerified: false
       });
-
-      if (res && res.user) {
-        const authUser: AuthUser = {
-          uid: res.user.uid,
-          email: res.user.email,
-          displayName: res.user.displayName || name.trim(),
-          role: res.user.role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'CLIENT',
-          organizationId: 'org_' + res.user.uid,
-          status: res.user.status || 'active',
-          language: 'en',
-          timezone: 'UTC',
-          emailVerified: res.user.emailVerified ?? false,
-          onboardingStatus: res.user.onboardingStatus || 'NOT_STARTED',
-          onboardingCompletedAt: res.user.onboardingCompletedAt || null,
-          onboardingVersion: res.user.onboardingVersion || 1
-        };
-        setUser(authUser);
-        localStorage.setItem('saas_auth_user', JSON.stringify(authUser));
-        await syncUserProfileToFirestore(authUser);
-        if (businessName?.trim()) {
-          await syncBusinessToFirestore({
-            id: `biz_${authUser.uid}`,
-            ownerUid: authUser.uid,
-            businessName: businessName.trim(),
-            category: 'Retail & Store',
-            description: '',
-            city: '',
-            state: '',
-            country: 'India',
-            primaryLanguage: 'en',
-            googleReviewUrl: '',
-            onboardingStatus: 'NOT_STARTED',
-            onboardingCompleted: false
-          });
-        }
-        return { user: authUser, shopId: `biz_${authUser.uid}` };
-      }
-    } catch (serverErr: any) {
-      // If server registration fails but Firebase Auth user was created, finalize profile directly
-      if (firebaseUid) {
-        console.warn('[Auth] Server registration notice, continuing with Firebase authenticated user:', serverErr.message);
-        const authUser: AuthUser = {
-          uid: firebaseUid,
-          email: email.trim().toLowerCase(),
-          displayName: name.trim(),
-          role: 'CLIENT',
-          organizationId: 'org_' + firebaseUid,
-          status: 'active',
-          language: 'en',
-          timezone: 'UTC',
-          emailVerified: false,
-          onboardingStatus: 'NOT_STARTED',
-          onboardingCompletedAt: null,
-          onboardingVersion: 1
-        };
-        setUser(authUser);
-        localStorage.setItem('saas_auth_user', JSON.stringify(authUser));
-        await syncUserProfileToFirestore(authUser);
-        if (businessName?.trim()) {
-          await syncBusinessToFirestore({
-            id: `biz_${firebaseUid}`,
-            ownerUid: firebaseUid,
-            businessName: businessName.trim(),
-            category: 'Retail & Store',
-            description: '',
-            city: '',
-            state: '',
-            country: 'India',
-            primaryLanguage: 'en',
-            googleReviewUrl: '',
-            onboardingStatus: 'NOT_STARTED',
-            onboardingCompleted: false
-          });
-        }
-        return { user: authUser, shopId: `biz_${firebaseUid}` };
-      }
-
-      const serverMsg = serverErr.message || 'Signup failed. Please try again.';
-      setError(serverMsg);
-      throw new Error(serverMsg);
+    } catch (e) {
+      console.warn('[Auth] Edge sync notice:', e);
     }
 
-    throw new Error('Signup failed: server did not return user record.');
+    const authUser: AuthUser = {
+      uid: firebaseUid,
+      email: cleanEmail,
+      displayName: cleanName,
+      photoURL: null,
+      phone: cleanPhone,
+      role: 'CLIENT',
+      organizationId: 'org_' + firebaseUid,
+      status: 'active',
+      language: 'en',
+      timezone: 'UTC',
+      emailVerified: false,
+      onboardingStatus: 'NOT_STARTED',
+      onboardingCompletedAt: null,
+      onboardingVersion: 1
+    };
+
+    setUser(authUser);
+    try {
+      localStorage.setItem('saas_auth_user', JSON.stringify(authUser));
+    } catch {}
+
+    return { user: authUser, shopId };
   };
 
+  /**
+   * Google Sign-In
+   */
   const loginWithGoogle = async () => {
     setError(null);
     if (!auth || !isFirebaseConfigured) {
@@ -501,15 +473,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const cred = await signInWithPopup(auth, googleAuthProvider);
       if (cred && cred.user) {
-        const synced = await syncBackendUser(cred.user);
-        syncUserProfileToFirestore({
-          uid: cred.user.uid,
-          email: cred.user.email || '',
-          displayName: cred.user.displayName || '',
-          role: synced.role,
-          status: 'active',
-          onboardingStatus: synced.onboardingStatus
-        });
+        await syncBackendUser(cred.user);
       }
     } catch (err: any) {
       if (err?.code === 'auth/popup-closed-by-user') {
@@ -521,6 +485,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  /**
+   * Super Admin Login
+   */
   const loginSuperAdmin = async (adminEmail: string, pass: string): Promise<AuthUser> => {
     setError(null);
     try {
@@ -553,54 +520,63 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const logout = async () => {
-    if (auth && isFirebaseConfigured) {
-      await signOut(auth);
+  /**
+   * Real Firebase Password Reset Email (Requirement 5)
+   */
+  const resetPassword = async (email: string) => {
+    setError(null);
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      const err = 'Please enter a valid email address.';
+      setError(err);
+      throw new Error(err);
     }
-    localStorage.removeItem('saas_auth_user');
+
+    if (!auth || !isFirebaseConfigured) {
+      throw new Error('Firebase Authentication is not available.');
+    }
+
+    try {
+      await sendPasswordResetEmail(auth, cleanEmail);
+    } catch (err: any) {
+      const formatted = formatFirebaseAuthError(err);
+      setError(formatted);
+      throw new Error(formatted);
+    }
+  };
+
+  /**
+   * Sign Out
+   */
+  const logout = async () => {
+    try {
+      if (auth && isFirebaseConfigured) {
+        await signOut(auth);
+      }
+    } catch (e) {
+      console.warn('[Auth] Sign out notice:', e);
+    }
+    try {
+      localStorage.removeItem('saas_auth_user');
+    } catch {}
     setUser(null);
     setOrganization(null);
     setFirebaseUser(null);
   };
 
-  const resetPassword = async (email: string) => {
-    setError(null);
-    try {
-      await freshTestApi.requestPasswordReset(email);
-    } catch (err: any) {
-      if (auth && isFirebaseConfigured) {
-        await sendPasswordResetEmail(auth, email);
-        return;
-      }
-      setError(err.message || 'Failed to request password reset.');
-      throw err;
-    }
-  };
-
   const resendVerification = async () => {
-    if (!auth || !isFirebaseConfigured) {
-      if (user) {
-        const updated = { ...user, emailVerified: true };
-        setUser(updated);
-        localStorage.setItem('saas_auth_user', JSON.stringify(updated));
-      }
-      return;
-    }
     if (firebaseUser && !firebaseUser.emailVerified) {
       await sendEmailVerification(firebaseUser);
     }
   };
 
   const markEmailVerified = async () => {
-    try {
-      await freshTestApi.verifyEmail();
-    } catch {
-      // Local fallback
-    }
     if (user) {
       const updated: AuthUser = { ...user, emailVerified: true };
       setUser(updated);
-      localStorage.setItem('saas_auth_user', JSON.stringify(updated));
+      try {
+        localStorage.setItem('saas_auth_user', JSON.stringify(updated));
+      } catch {}
     }
   };
 
@@ -612,7 +588,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         onboardingCompletedAt: status === 'COMPLETED' ? (user.onboardingCompletedAt || new Date().toISOString()) : user.onboardingCompletedAt
       };
       setUser(updated);
-      localStorage.setItem('saas_auth_user', JSON.stringify(updated));
+      try {
+        localStorage.setItem('saas_auth_user', JSON.stringify(updated));
+      } catch {}
     }
   };
 

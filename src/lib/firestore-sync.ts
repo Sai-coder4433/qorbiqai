@@ -17,11 +17,16 @@ import { db } from './firebase.ts';
 
 export interface FirestoreUserProfile {
   uid: string;
-  email?: string | null;
+  ownerId?: string;
+  fullName?: string;
   displayName?: string | null;
+  email?: string | null;
   phone?: string;
+  mobile?: string;
   role?: string;
   status?: 'active' | 'invited' | 'suspended' | string;
+  accountStatus?: string;
+  profileCompleted?: boolean;
   onboardingStatus?: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
   onboardingCompletedAt?: any;
   createdAt?: any;
@@ -82,21 +87,29 @@ export interface FirestoreSubscriptionRecord {
 }
 
 /**
- * Save / sync user and owner profile to Firestore
+ * Save / sync user and owner profile to Firestore (both owners/{uid} and users/{uid})
  */
 export async function syncUserProfileToFirestore(user: Partial<FirestoreUserProfile> & { uid: string }) {
   if (!db) return;
   try {
     const userRef = doc(db, 'users', user.uid);
     const ownerRef = doc(db, 'owners', user.uid);
+    const fullName = user.fullName || user.displayName || user.email?.split('@')[0] || 'Business Owner';
+    const mobile = user.mobile || user.phone || '';
+    const cleanRole = user.role || 'BUSINESS_OWNER';
+
     const profilePayload = {
       uid: user.uid,
       ownerId: user.uid,
-      email: user.email || '',
-      displayName: user.displayName || user.email?.split('@')[0] || 'User',
-      phone: user.phone || '',
-      role: user.role || 'CLIENT',
+      fullName,
+      displayName: fullName,
+      email: user.email ? user.email.toLowerCase().trim() : '',
+      mobile,
+      phone: mobile,
+      role: cleanRole,
       status: user.status || 'active',
+      accountStatus: user.accountStatus || 'active',
+      profileCompleted: true,
       onboardingStatus: user.onboardingStatus || 'NOT_STARTED',
       onboardingCompletedAt: user.onboardingCompletedAt || null,
       createdAt: user.createdAt || serverTimestamp(),
@@ -250,20 +263,60 @@ export async function syncSubscriptionToFirestore(sub: Partial<FirestoreSubscrip
 }
 
 /**
- * Load user profile from Firestore
+ * Load user and owner profile from Firestore (checks owners/{uid} first, then users/{uid})
  */
 export async function loadUserProfileFromFirestore(uid: string): Promise<FirestoreUserProfile | null> {
-  if (!db) return null;
+  if (!db || !uid) return null;
   try {
+    const ownerRef = doc(db, 'owners', uid);
+    const ownerSnap = await getDoc(ownerRef);
+    if (ownerSnap.exists()) {
+      return ownerSnap.data() as FirestoreUserProfile;
+    }
+
     const userRef = doc(db, 'users', uid);
-    const snap = await getDoc(userRef);
-    if (snap.exists()) {
-      return snap.data() as FirestoreUserProfile;
+    const userSnap = await getDoc(userRef);
+    if (userSnap.exists()) {
+      return userSnap.data() as FirestoreUserProfile;
     }
   } catch (err: any) {
-    console.warn('[FirestoreSync] Failed to load user profile:', err.message);
+    console.warn('[FirestoreSync] Failed to load owner/user profile:', err.message);
   }
   return null;
+}
+
+/**
+ * Safely auto-heal / recover missing owner profile in Firestore (Requirement 2 & 3)
+ */
+export async function recoverOwnerProfileInFirestore(fbUser: {
+  uid: string;
+  email?: string | null;
+  displayName?: string | null;
+  phoneNumber?: string | null;
+}): Promise<FirestoreUserProfile> {
+  const existing = await loadUserProfileFromFirestore(fbUser.uid);
+  if (existing) return existing;
+
+  const fullName = fbUser.displayName || fbUser.email?.split('@')[0] || 'Business Owner';
+  const profile: FirestoreUserProfile = {
+    uid: fbUser.uid,
+    ownerId: fbUser.uid,
+    fullName,
+    displayName: fullName,
+    email: fbUser.email ? fbUser.email.toLowerCase().trim() : '',
+    mobile: fbUser.phoneNumber || '',
+    phone: fbUser.phoneNumber || '',
+    role: 'BUSINESS_OWNER',
+    status: 'active',
+    accountStatus: 'active',
+    profileCompleted: true,
+    onboardingStatus: 'NOT_STARTED',
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+
+  await syncUserProfileToFirestore(profile);
+  return profile;
 }
 
 /**
