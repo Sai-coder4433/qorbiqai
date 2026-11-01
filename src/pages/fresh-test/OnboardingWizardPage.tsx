@@ -70,8 +70,11 @@ export const OnboardingWizardPage: React.FC = () => {
   const [category, setCategory] = useState('jewellery_gold');
   const [subcategory, setSubcategory] = useState('gold_jewellery');
   const [description, setDescription] = useState('');
+  const [ownerName, setOwnerName] = useState('');
+  const [address, setAddress] = useState('');
   const [city, setCity] = useState('');
   const [stateName, setStateName] = useState('Maharashtra');
+  const [pincode, setPincode] = useState('');
   const [country, setCountry] = useState('India');
   const [primaryLanguage, setPrimaryLanguage] = useState('English');
   const [phone, setPhone] = useState('');
@@ -221,8 +224,11 @@ export const OnboardingWizardPage: React.FC = () => {
       setCategory(b.category || 'jewellery_gold');
       setSubcategory(b.subcategory || findCategoryById(b.category || 'jewellery_gold')?.subcategories[0]?.id || 'gold_jewellery');
       setDescription(b.description || '');
+      setOwnerName((b as any).ownerName || user?.displayName || '');
+      setAddress((b as any).address || '');
       setCity(b.city || '');
       setStateName(b.state || 'Maharashtra');
+      setPincode((b as any).pincode || '');
       setCountry(b.country || 'India');
       setPrimaryLanguage(b.primaryLanguage || b.preferredLanguage || 'English');
       setPhone(b.phone || '');
@@ -306,8 +312,11 @@ export const OnboardingWizardPage: React.FC = () => {
       category: category,
       subcategory: subcategory,
       description: description.trim(),
+      ownerName: ownerName.trim(),
+      address: address.trim(),
       city: city.trim(),
       state: stateName.trim(),
+      pincode: pincode.trim(),
       country: country.trim(),
       primaryLanguage: primaryLanguage,
       googleReviewUrl: googleReviewUrl.trim(),
@@ -783,6 +792,34 @@ export const OnboardingWizardPage: React.FC = () => {
               )}
             </div>
 
+            {/* Owner Name */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-700">
+                Owner / Manager Name
+              </label>
+              <input
+                type="text"
+                value={ownerName}
+                onChange={e => setOwnerName(e.target.value)}
+                placeholder="e.g. Sai Chakankar"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:bg-white"
+              />
+            </div>
+
+            {/* Street Address */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-700">
+                Business / Store Address
+              </label>
+              <input
+                type="text"
+                value={address}
+                onChange={e => setAddress(e.target.value)}
+                placeholder="e.g. Shop 4, Main Market, FC Road"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:bg-white"
+              />
+            </div>
+
             {/* City */}
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-slate-700">
@@ -807,6 +844,20 @@ export const OnboardingWizardPage: React.FC = () => {
                 value={stateName}
                 onChange={e => setStateName(e.target.value)}
                 placeholder="e.g. Maharashtra"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:bg-white"
+              />
+            </div>
+
+            {/* Pincode */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-700">
+                Pincode
+              </label>
+              <input
+                type="text"
+                value={pincode}
+                onChange={e => setPincode(e.target.value)}
+                placeholder="e.g. 411004"
                 className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:bg-white"
               />
             </div>

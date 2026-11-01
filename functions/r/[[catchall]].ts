@@ -417,7 +417,21 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     })());
   }
 
-  // 8. Return Fast HTTP 302 Redirect to verified Google Review URL
+  // 8. Dual Routing Mode:
+  // If ?direct=1 or /direct or configured for direct redirect, issue instant HTTP 302 to Google.
+  // Otherwise, pass through to React SPA CustomerReviewPage for interactive AI assistance.
+  const isDirectRequested =
+    url.searchParams.get('direct') === '1' ||
+    url.searchParams.get('mode') === 'direct' ||
+    url.pathname.endsWith('/direct') ||
+    record.routingMode === 'DIRECT' ||
+    record.redirectMode === 'DIRECT';
+
+  if (!isDirectRequested && context.next) {
+    return context.next();
+  }
+
+  // Return Fast HTTP 302 Redirect to verified Google Review URL
   return new Response(null, {
     status: 302,
     headers: {

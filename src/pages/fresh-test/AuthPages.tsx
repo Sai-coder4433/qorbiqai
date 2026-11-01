@@ -50,12 +50,10 @@ export const LoginPage: React.FC = () => {
       const loggedIn = await loginWithEmail(email.trim(), password);
       if (loggedIn.role === 'SUPER_ADMIN') {
         navigate('/super-admin');
-      } else if (loggedIn.onboardingStatus !== 'COMPLETED') {
-        navigate('/onboarding', { replace: true });
       } else {
         const target = redirectUrl && redirectUrl !== '/onboarding' && redirectUrl !== '/verify-email'
           ? redirectUrl
-          : '/app/dashboard';
+          : '/app';
         navigate(target, { replace: true });
       }
     } catch (err: any) {
@@ -73,7 +71,7 @@ export const LoginPage: React.FC = () => {
             <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold shadow-xs">
               <QrCode className="w-4 h-4" />
             </div>
-            <span className="font-bold text-base tracking-tight text-slate-900">ReviewFlow AI</span>
+            <span className="font-bold text-base tracking-tight text-slate-900">Qorbiq AI</span>
           </Link>
           <Link
             to="/signup"
@@ -177,7 +175,7 @@ export const LoginPage: React.FC = () => {
       </main>
 
       <footer className="border-t border-slate-200 bg-white py-4 px-6 text-center text-xs text-slate-400">
-        ReviewFlow AI • Strictly isolated client portal
+        Qorbiq AI • Strictly isolated client portal
       </footer>
     </div>
   );
@@ -244,7 +242,7 @@ export const SignupPage: React.FC = () => {
         phone.trim(),
         termsAccepted
       );
-      navigate('/onboarding', { replace: true });
+      navigate('/app/pricing', { replace: true });
     } catch (err: any) {
       const msg = err?.message || '';
       if (
@@ -254,7 +252,7 @@ export const SignupPage: React.FC = () => {
         // Seamlessly auto-login existing user with provided credentials
         try {
           await loginWithEmail(email.trim(), password);
-          navigate('/onboarding', { replace: true });
+          navigate('/app/pricing', { replace: true });
           return;
         } catch {
           setErrorMessage(
@@ -277,7 +275,7 @@ export const SignupPage: React.FC = () => {
             <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold shadow-xs">
               <QrCode className="w-4 h-4" />
             </div>
-            <span className="font-bold text-base tracking-tight text-slate-900">ReviewFlow AI</span>
+            <span className="font-bold text-base tracking-tight text-slate-900">Qorbiq AI</span>
           </Link>
           <Link
             to="/login"
@@ -293,7 +291,7 @@ export const SignupPage: React.FC = () => {
           <div className="text-center space-y-1">
             <div className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full mb-1">
               <Sparkles className="w-3 h-3" />
-              <span>ReviewFlow Pro Initial Access</span>
+              <span>Qorbiq AI One-Time Access</span>
             </div>
             <h1 className="text-2xl font-bold tracking-tight text-slate-900">Create Shop Account</h1>
             <p className="text-xs text-slate-500">
@@ -514,7 +512,7 @@ export const SignupPage: React.FC = () => {
       </main>
 
       <footer className="border-t border-slate-200 bg-white py-4 px-6 text-center text-xs text-slate-400">
-        ReviewFlow AI • 14-Day Free Testing Experience
+        Qorbiq AI • Verified Client Access
       </footer>
     </div>
   );
@@ -608,7 +606,7 @@ export const ForgotPasswordPage: React.FC = () => {
             <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold shadow-xs">
               <QrCode className="w-4 h-4" />
             </div>
-            <span className="font-bold text-base tracking-tight text-slate-900">ReviewFlow AI</span>
+            <span className="font-bold text-base tracking-tight text-slate-900">Qorbiq AI</span>
           </Link>
           <Link to="/login" className="text-xs font-semibold text-blue-600 hover:underline">
             Back to Sign In
@@ -823,7 +821,7 @@ export const ForgotPasswordPage: React.FC = () => {
       </main>
 
       <footer className="border-t border-slate-200 bg-white py-4 px-6 text-center text-xs text-slate-400">
-        ReviewFlow AI • Password Security & Recovery
+        Qorbiq AI • Password Security & Recovery
       </footer>
     </div>
   );

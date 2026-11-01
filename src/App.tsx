@@ -48,6 +48,11 @@ import { QrAutomationPage } from './pages/fresh-test/QrAutomationPage.tsx';
 import { AnalyticsPage } from './pages/fresh-test/AnalyticsPage.tsx';
 import { BillingPage } from './pages/fresh-test/BillingPage.tsx';
 import { AccountSettingsPage } from './pages/fresh-test/AccountSettingsPage.tsx';
+import { AiReviewGeneratorPage } from './pages/fresh-test/AiReviewGeneratorPage.tsx';
+import { ReviewPageManagePage } from './pages/fresh-test/ReviewPageManagePage.tsx';
+import { NfcManagementPage } from './pages/fresh-test/NfcManagementPage.tsx';
+import { CustomerActivityPage } from './pages/fresh-test/CustomerActivityPage.tsx';
+import { HelpSupportPage } from './pages/fresh-test/HelpSupportPage.tsx';
 
 // Super Admin Pages (Section 4, 5, 6, 8, 9, 10)
 import { SuperAdminLoginPage } from './pages/super-admin/SuperAdminLoginPage.tsx';
@@ -208,6 +213,26 @@ export default function App() {
               }
             />
             <Route
+              path="/app/ai-generator"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <AiReviewGeneratorPage />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/review-page"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <ReviewPageManagePage />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/app/business"
               element={
                 <ProtectedRoute>
@@ -227,78 +252,98 @@ export default function App() {
                 </ProtectedRoute>
               }
             />
-          <Route
-            path="/app/business"
-            element={
-              <ProtectedRoute>
-                <AppLayout>
-                  <BusinessProfilePage />
-                </AppLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/app/credits"
-            element={<Navigate to="/app/billing" replace />}
-          />
-          <Route
-            path="/app/onboarding"
-            element={<Navigate to="/onboarding" replace />}
-          />
-          <Route
-            path="/app/qr"
-            element={
-              <ProtectedRoute>
-                <AppLayout>
-                  <QrAutomationPage />
-                </AppLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/app/qr-automation"
-            element={<Navigate to="/app/qr" replace />}
-          />
-          <Route
-            path="/app/analytics"
-            element={
-              <ProtectedRoute>
-                <AppLayout>
-                  <AnalyticsPage />
-                </AppLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/app/billing"
-            element={
-              <ProtectedRoute>
-                <AppLayout>
-                  <BillingPage />
-                </AppLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/app/standees"
-            element={
-              <ProtectedRoute>
-                <AppLayout>
-                  <StandeeShopPage />
-                </AppLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/app/settings"
-            element={
-              <ProtectedRoute>
-                <AppLayout>
-                  <AccountSettingsPage />
-                </AppLayout>
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/app/credits"
+              element={<Navigate to="/app/billing" replace />}
+            />
+            <Route
+              path="/app/qr"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <QrAutomationPage />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/qr-automation"
+              element={<Navigate to="/app/qr" replace />}
+            />
+            <Route
+              path="/app/nfc"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <NfcManagementPage />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/analytics"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <AnalyticsPage />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/activity"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <CustomerActivityPage />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/billing"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <BillingPage />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/standees"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <StandeeShopPage />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/shop"
+              element={<Navigate to="/app/standees" replace />}
+            />
+            <Route
+              path="/app/support"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <HelpSupportPage />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/settings"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <AccountSettingsPage />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
 
           {/* ======================================================== */}
           {/* 4. SUPER ADMIN PORTAL (Section 4, 5, 6, 8, 9, 10, 11) */}

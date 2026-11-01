@@ -19,17 +19,14 @@ import {
   Check,
   AlertCircle,
   ExternalLink,
-  Package
+  Package,
+  Radio,
+  Globe,
+  Activity,
+  LifeBuoy
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context.tsx';
 import { useBusiness } from '../../lib/business-context.tsx';
-import { freshTestApi, PlanDefinition } from '../../lib/fresh-test-api.ts';
-import { openRazorpayCheckout } from '../../lib/razorpay.ts';
-
-interface AppLayoutProps {
-  children: React.ReactNode;
-}
-
 export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -46,12 +43,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const switcherRef = useRef<HTMLDivElement>(null);
-
-  // Add Business / Razorpay Purchase Modal State
-  const [showPurchaseModal, setShowPurchaseModal] = useState(false);
-  const [billingInterval, setBillingInterval] = useState<'monthly' | 'yearly'>('monthly');
-  const [paymentProcessing, setPaymentProcessing] = useState(false);
-  const [paymentError, setPaymentError] = useState<string | null>(null);
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -72,74 +63,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
   const handleStartPurchaseFlow = () => {
     setSwitcherOpen(false);
-    setPaymentError(null);
-    setShowPurchaseModal(true);
-  };
-
-  const handleExecutePayment = async () => {
-    setPaymentError(null);
-    setPaymentProcessing(true);
-
-    try {
-      // Step 1: Create pending payment intent on server
-      const intent = await freshTestApi.createPaymentIntent({
-        planId: 'reviewflow_unlimited',
-        billingInterval
-      });
-
-      // Step 2: Open Razorpay Checkout modal
-      let checkoutRes;
-      try {
-        checkoutRes = await openRazorpayCheckout({
-          key: intent.keyId,
-          amount: intent.amount,
-          currency: intent.currency,
-          name: 'ReviewFlow AI',
-          description: `ReviewFlow Unlimited (${billingInterval === 'yearly' ? 'Annual' : 'Monthly'})`,
-          order_id: intent.orderId,
-          prefill: {
-            name: user?.displayName || '',
-            email: user?.email || ''
-          },
-          theme: {
-            color: '#2563eb'
-          }
-        });
-      } catch (checkoutErr: any) {
-        if (checkoutErr?.message === 'PAYMENT_CANCELLED') {
-          setPaymentError('Payment was cancelled. Your new business was not activated.');
-        } else {
-          setPaymentError(checkoutErr?.message || 'Payment checkout could not be completed.');
-        }
-        setPaymentProcessing(false);
-        return;
-      }
-
-      // Step 3: Server-side cryptographic signature verification and atomic provisioning
-      // Note: Backend verification is the authority, NEVER frontend paymentSuccess
-      const verification = await freshTestApi.verifyPayment({
-        paymentId: intent.paymentId,
-        razorpay_payment_id: checkoutRes.razorpay_payment_id,
-        razorpay_order_id: checkoutRes.razorpay_order_id || intent.orderId,
-        razorpay_subscription_id: checkoutRes.razorpay_subscription_id || intent.subscriptionId,
-        razorpay_signature: checkoutRes.razorpay_signature
-      });
-
-      if (!verification.success || !verification.business) {
-        throw new Error((verification as any).error || 'Server failed to verify payment.');
-      }
-
-      // Close modal and refresh business list
-      setShowPurchaseModal(false);
-      await refreshBusinesses();
-
-      // Step 4: Immediately redirect to fresh multi-step onboarding for this new business
-      navigate(`/app/onboarding/${verification.business.id}`);
-    } catch (err: any) {
-      setPaymentError(err.message || 'Payment verification failed. Please try again or contact support.');
-    } finally {
-      setPaymentProcessing(false);
-    }
+    navigate('/app/pricing');
   };
 
   const handleLogout = async () => {
@@ -149,43 +73,73 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
   const navItems = [
     {
-      label: 'Dashboard',
+      label: 'Dashboard Overview',
       path: activeBusiness ? `/app/dashboard/${activeBusiness.id}` : '/app/dashboard',
       icon: LayoutDashboard,
       active: location.pathname.includes('/app/dashboard') || location.pathname === '/app'
     },
     {
-      label: 'My Businesses',
-      path: '/app/businesses',
-      icon: Building2,
-      active: location.pathname === '/app/businesses' || location.pathname === '/app/business'
+      label: 'AI Review Generator',
+      path: '/app/ai-generator',
+      icon: Sparkles,
+      active: location.pathname === '/app/ai-generator'
     },
     {
-      label: 'NFC & QR Stand',
+      label: 'Public Review Page',
+      path: '/app/review-page',
+      icon: Globe,
+      active: location.pathname === '/app/review-page'
+    },
+    {
+      label: 'QR Code Stand',
       path: '/app/qr',
       icon: QrCode,
       active: location.pathname === '/app/qr' || location.pathname === '/app/qr-automation'
     },
     {
-      label: 'Order Standees',
-      path: '/app/standees',
-      icon: Package,
-      active: location.pathname === '/app/standees'
+      label: 'NFC Management',
+      path: '/app/nfc',
+      icon: Radio,
+      active: location.pathname === '/app/nfc'
     },
     {
-      label: 'Analytics',
+      label: 'Analytics & Scans',
       path: '/app/analytics',
       icon: BarChart3,
       active: location.pathname === '/app/analytics'
     },
     {
-      label: 'Billing',
+      label: 'Business Profile',
+      path: '/app/business',
+      icon: Building2,
+      active: location.pathname === '/app/business' || location.pathname === '/app/businesses'
+    },
+    {
+      label: 'Customer Activity',
+      path: '/app/activity',
+      icon: Activity,
+      active: location.pathname === '/app/activity'
+    },
+    {
+      label: 'Billing & Plan',
       path: '/app/billing',
       icon: CreditCard,
       active: location.pathname === '/app/billing'
     },
     {
-      label: 'Settings',
+      label: 'Order Standees',
+      path: '/app/standees',
+      icon: Package,
+      active: location.pathname === '/app/standees' || location.pathname === '/app/shop'
+    },
+    {
+      label: 'Help & Support',
+      path: '/app/support',
+      icon: LifeBuoy,
+      active: location.pathname === '/app/support'
+    },
+    {
+      label: 'Account Settings',
       path: '/app/settings',
       icon: Settings,
       active: location.pathname === '/app/settings'
@@ -200,7 +154,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center text-white">
             <QrCode className="w-4 h-4" />
           </div>
-          <span className="font-bold text-sm tracking-tight text-slate-900">ReviewFlow AI</span>
+          <span className="font-bold text-sm tracking-tight text-slate-900">Qorbiq AI</span>
         </Link>
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -224,9 +178,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             </div>
             <div>
               <span className="font-extrabold text-sm tracking-tight text-slate-900 block leading-tight">
-                ReviewFlow AI
+                Qorbiq AI
               </span>
-              <span className="text-[10px] text-blue-600 font-semibold">Review Assistance SaaS</span>
+              <span className="text-[10px] text-blue-600 font-semibold">Smart Review SaaS</span>
             </div>
           </Link>
 
@@ -241,7 +195,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                 <span>Active Business</span>
                 <div className="flex items-center gap-1">
                   <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100 uppercase">
-                    ReviewFlow Unlimited
+                    Qorbiq Pro
                   </span>
                   <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${switcherOpen ? 'rotate-180' : ''}`} />
                 </div>
@@ -416,129 +370,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       <main className="flex-1 p-4 sm:p-8 overflow-y-auto max-w-7xl mx-auto w-full">
         {children}
       </main>
-
-      {/* Razorpay Purchase Plan Modal for "Add New Business" */}
-      {showPurchaseModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-100 space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100">
-                  New Business Subscription
-                </span>
-                <h3 className="text-xl font-black text-slate-900 mt-1">Add Another Business</h3>
-              </div>
-              <button
-                onClick={() => !paymentProcessing && setShowPurchaseModal(false)}
-                disabled={paymentProcessing}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 cursor-pointer disabled:opacity-50"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Every business on ReviewFlow AI requires its own dedicated subscription to maintain strictly isolated AI topics, QR stands, NFC configurations, and customer review analytics.
-            </p>
-
-            {/* Plan Selector */}
-            <div className="space-y-3">
-              {[
-                {
-                  id: 'monthly',
-                  name: 'Monthly Plan',
-                  price: '₹299',
-                  period: '/month',
-                  desc: 'Flexible monthly billing with full platform access.',
-                  features: ['Unlimited AI Review Generations', 'Permanent Dynamic QR Redirect', 'HD QR & NFC Support']
-                },
-                {
-                  id: 'yearly',
-                  name: 'Yearly Plan',
-                  price: '₹2,999',
-                  period: '/year',
-                  badge: 'Best Value · Save ₹589/yr',
-                  desc: 'Best value annual plan compared with 12 monthly payments.',
-                  features: ['Unlimited AI Review Generations', 'Permanent Dynamic QR Redirect', 'HD QR & NFC Support', 'Priority Gemini Speed']
-                }
-              ].map(plan => {
-                const selected = billingInterval === plan.id;
-                return (
-                  <div
-                    key={plan.id}
-                    onClick={() => !paymentProcessing && setBillingInterval(plan.id as any)}
-                    className={`p-4 rounded-2xl border-2 cursor-pointer transition-all ${
-                      selected
-                        ? 'border-blue-600 bg-blue-50/30'
-                        : 'border-slate-200 hover:border-slate-300 bg-white'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="font-bold text-sm text-slate-900">{plan.name}</div>
-                        {plan.badge && (
-                          <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                            {plan.badge}
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-right">
-                        <span className="text-base font-black text-slate-900">{plan.price}</span>
-                        <span className="text-[10px] text-slate-400">{plan.period}</span>
-                      </div>
-                    </div>
-                    <div className="text-[11px] text-slate-500 mt-0.5">{plan.desc}</div>
-                    <div className="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap gap-2 text-[10px] text-slate-600">
-                      {plan.features.map((f, i) => (
-                        <span key={i} className="flex items-center gap-1">
-                          <Check className="w-3 h-3 text-emerald-600 shrink-0" />
-                          <span>{f}</span>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {paymentError && (
-              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{paymentError}</span>
-              </div>
-            )}
-
-            <div className="flex items-center justify-between gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowPurchaseModal(false)}
-                disabled={paymentProcessing}
-                className="px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleExecutePayment}
-                disabled={paymentProcessing}
-                className="flex-1 py-3 px-5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-                {paymentProcessing ? (
-                  <>
-                    <Clock className="w-4 h-4 animate-spin" />
-                    <span>Verifying Secure Payment...</span>
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck className="w-4 h-4" />
-                    <span>Pay Securely via Razorpay</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
