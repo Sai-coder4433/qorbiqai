@@ -529,42 +529,103 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     }
   }
 
-  // QR Codes Listing / Generation
-  if (url.pathname === '/api/qr' && request.method === 'GET') {
+  // QR Codes Listing (GET /api/qr-codes or /api/qr)
+  if ((url.pathname === '/api/qr-codes' || url.pathname === '/api/qr') && request.method === 'GET') {
     const ownerUid = request.headers.get('x-user-uid') || 'default';
+    const bizId = url.searchParams.get('businessId') || `biz_${ownerUid}`;
+    const code = `code_${ownerUid.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8)}`;
+    const qrItem = {
+      id: `qr_${ownerUid}`,
+      businessId: bizId,
+      ownerUid,
+      name: 'Primary Dynamic Stand',
+      label: 'Primary Dynamic Stand',
+      uniqueCode: code,
+      destinationUrl: 'https://search.google.com/local/writereview',
+      routePath: `/r/${code}`,
+      status: 'ACTIVE',
+      scanCount: 0,
+      scansCount: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
     return jsonResponse({
-      qrCodes: [{
-        id: `qr_${ownerUid}`,
-        businessId: `biz_${ownerUid}`,
-        ownerUid,
-        name: 'Primary Dynamic Stand',
-        uniqueCode: `code_${ownerUid.substring(0, 8)}`,
-        routePath: `/r/biz_${ownerUid}/stand/qr`,
-        destinationUrl: 'https://search.google.com/local/writereview',
-        status: 'ACTIVE',
-        scansCount: 0
-      }]
+      qrCodes: [qrItem],
+      qrCode: qrItem
     });
   }
 
-  // QR Code Creation (POST)
-  if (url.pathname === '/api/qr' && request.method === 'POST') {
+  // QR Code Creation (POST /api/qr-codes or /api/qr)
+  if ((url.pathname === '/api/qr-codes' || url.pathname === '/api/qr') && request.method === 'POST') {
     const body: any = await request.json().catch(() => ({}));
     const ownerUid = request.headers.get('x-user-uid') || body.ownerUid || `user_${Date.now()}`;
+    const bizId = body.businessId || `biz_${ownerUid}`;
     const qrId = `qr_${crypto.randomUUID().replace(/-/g, '').substring(0, 12)}`;
+    const code = `code_${ownerUid.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8)}`;
+    const qrItem = {
+      id: qrId,
+      businessId: bizId,
+      ownerUid,
+      name: body.label || body.name || 'Primary Dynamic Stand',
+      label: body.label || body.name || 'Primary Dynamic Stand',
+      uniqueCode: code,
+      destinationUrl: body.destinationUrl || 'https://search.google.com/local/writereview',
+      routePath: `/r/${code}`,
+      status: 'ACTIVE',
+      scanCount: 0,
+      scansCount: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
     return jsonResponse({
-      qrCode: {
-        id: qrId,
-        businessId: body.businessId || `biz_${ownerUid}`,
-        ownerUid,
-        name: body.name || 'Primary Dynamic Stand',
-        uniqueCode: `code_${ownerUid.substring(0, 8)}`,
-        routePath: `/r/biz_${ownerUid}/stand/qr`,
-        destinationUrl: 'https://search.google.com/local/writereview',
-        status: 'ACTIVE',
-        scansCount: 0
-      },
+      qrCode: qrItem,
       message: 'QR code generated successfully.'
+    });
+  }
+
+  // NFC Card (GET /api/nfc-card or POST /api/nfc-card)
+  if (url.pathname === '/api/nfc-card') {
+    const ownerUid = request.headers.get('x-user-uid') || 'default';
+    const bizId = `biz_${ownerUid}`;
+    const code = `code_${ownerUid.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8)}`;
+    const nfcItem = {
+      id: `nfc_${ownerUid}`,
+      businessId: bizId,
+      ownerUid,
+      uniqueCode: code,
+      dynamicUrl: `${url.origin}/r/${code}`,
+      status: 'ACTIVE',
+      totalTaps: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    return jsonResponse({
+      nfcCard: nfcItem
+    });
+  }
+
+  // Credits (GET /api/credits)
+  if (url.pathname === '/api/credits' && request.method === 'GET') {
+    return jsonResponse({
+      creditsRemaining: 100,
+      totalCreditsEarned: 100,
+      creditsUsed: 0,
+      packages: [
+        { id: 'cred_100', name: 'Starter Pack', credits: 100, price: 499, currency: 'INR' },
+        { id: 'cred_500', name: 'Growth Pack', credits: 500, price: 1999, currency: 'INR' },
+        { id: 'cred_1000', name: 'Enterprise Pack', credits: 1000, price: 3499, currency: 'INR' }
+      ]
+    });
+  }
+
+  // Activate Business POST /api/businesses/:id/activate
+  const activateBizMatch = url.pathname.match(/^\/api\/businesses\/([^/]+)\/activate$/);
+  if (activateBizMatch && request.method === 'POST') {
+    const bizId = activateBizMatch[1];
+    return jsonResponse({
+      success: true,
+      activeBusinessId: bizId,
+      message: 'Active business set successfully.'
     });
   }
 
