@@ -355,3 +355,4 @@ export const CustomerActivityPage: React.FC = () => {
     </div>
   );
 };
+

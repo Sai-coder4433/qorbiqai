@@ -23,7 +23,8 @@ import {
   Radio,
   Globe,
   Activity,
-  LifeBuoy
+  LifeBuoy,
+  Store
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context.tsx';
 import { useBusiness } from '../../lib/business-context.tsx';
@@ -73,10 +74,16 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
   const navItems = [
     {
+      label: 'My Shops (Owner Hub)',
+      path: '/app/shops',
+      icon: Store,
+      active: location.pathname === '/app/shops' || location.pathname === '/app' || location.pathname === '/app/businesses'
+    },
+    {
       label: 'Dashboard Overview',
       path: activeBusiness ? `/app/dashboard/${activeBusiness.id}` : '/app/dashboard',
       icon: LayoutDashboard,
-      active: location.pathname.includes('/app/dashboard') || location.pathname === '/app'
+      active: location.pathname.includes('/app/dashboard')
     },
     {
       label: 'AI Review Generator',
@@ -303,14 +310,28 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                 </div>
 
                 {/* Add New Business Trigger */}
-                <div className="border-t border-slate-100 p-2 bg-slate-50/50">
+                <div className="border-t border-slate-100 p-2 bg-slate-50/50 space-y-1">
                   <button
                     type="button"
-                    onClick={handleStartPurchaseFlow}
-                    className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100/60 rounded-xl transition-colors cursor-pointer"
+                    onClick={() => {
+                      setSwitcherOpen(false);
+                      navigate('/app/shops/create');
+                    }}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors cursor-pointer shadow-xs"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>Add New Business</span>
+                    <span>CREATE NEW SHOP</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSwitcherOpen(false);
+                      navigate('/app/shops');
+                    }}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer"
+                  >
+                    <Store className="w-3.5 h-3.5" />
+                    <span>All Shops (Owner Hub)</span>
                   </button>
                 </div>
               </div>

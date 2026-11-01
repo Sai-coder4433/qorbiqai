@@ -229,3 +229,4 @@ export const NfcManagementPage: React.FC = () => {
     </div>
   );
 };
+

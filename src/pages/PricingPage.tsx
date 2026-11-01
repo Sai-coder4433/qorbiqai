@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   QrCode,
   ArrowRight,
@@ -15,7 +15,8 @@ import {
   CreditCard,
   Lock,
   X,
-  Clock
+  Clock,
+  Store
 } from 'lucide-react';
 import { useAuth } from '../lib/auth-context.tsx';
 import { useBusiness } from '../lib/business-context.tsx';
@@ -87,8 +88,13 @@ const OFFICIAL_PLANS: Record<'qorbiq_6_months' | 'qorbiq_12_months', QorbiqPlanI
 
 export const PricingPage: React.FC = () => {
   const { user } = useAuth();
-  const { refreshBusinesses } = useBusiness();
+  const { businesses, refreshBusinesses, activeBusiness } = useBusiness();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  // Selected shop for this payment
+  const targetShopId = searchParams.get('shopId') || searchParams.get('businessId') || activeBusiness?.id || '';
+  const targetShop = businesses.find(b => b.id === targetShopId) || activeBusiness;
 
   // Active highlighted plan tab
   const [activePlanId, setActivePlanId] = useState<'qorbiq_6_months' | 'qorbiq_12_months'>('qorbiq_12_months');
@@ -126,7 +132,7 @@ export const PricingPage: React.FC = () => {
   const handleInitiateOrder = (plan: QorbiqPlanItem) => {
     setCheckoutError(null);
     if (!user) {
-      navigate(`/signup?planId=${plan.id}&amount=${plan.price}`);
+      navigate(`/signup?planId=${plan.id}&amount=${plan.price}${targetShopId ? `&shopId=${targetShopId}` : ''}`);
       return;
     }
     setConfirmingPlan(plan);
@@ -145,6 +151,7 @@ export const PricingPage: React.FC = () => {
         planId: confirmingPlan.id,
         amount: confirmingPlan.price,
         durationDays: confirmingPlan.durationDays,
+        shopId: targetShopId || undefined,
         gateway: 'CASHFREE',
         billingModel: 'ONE_TIME',
         autoRenew: false
@@ -227,6 +234,19 @@ export const PricingPage: React.FC = () => {
             <strong className="text-slate-900 font-bold">100% One-Time Payments</strong> with{' '}
             <strong className="text-slate-900 font-bold">Zero Recurring Debits</strong>, no bank mandates, and manual renewal upon expiry.
           </p>
+
+          {/* Targeted Shop Indicator */}
+          {targetShopId && (
+            <div className="max-w-md mx-auto p-3 bg-blue-50 border border-blue-200 rounded-2xl flex items-center justify-between text-xs text-blue-900 shadow-xs">
+              <div className="flex items-center gap-2">
+                <Store className="w-4 h-4 text-blue-600 shrink-0" />
+                <span>Activating Access for: <strong>{targetShop?.businessName || targetShop?.shopName || targetShopId}</strong></span>
+              </div>
+              <span className="font-mono text-[10px] text-blue-700 bg-white px-2 py-0.5 rounded-md border border-blue-200">
+                {targetShopId.slice(0, 16)}
+              </span>
+            </div>
+          )}
 
           {/* Plan Selector Buttons */}
           <div className="pt-2 flex items-center justify-center">

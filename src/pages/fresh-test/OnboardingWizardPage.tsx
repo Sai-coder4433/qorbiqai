@@ -213,6 +213,13 @@ export const OnboardingWizardPage: React.FC = () => {
         return;
       }
 
+      // Check payment status - if unpaid, redirect to payment for this shop
+      const isPaid = (b as any).paymentStatus === 'paid' || (b as any).paymentStatus === 'PAID' || Boolean(b.subscription) || (b as any).amountPaid > 0;
+      if (!isPaid && ((b as any).paymentStatus === 'unpaid' || (b as any).onboardingStatus === 'payment_required')) {
+        navigate(`/app/pricing?shopId=${b.id}`, { replace: true });
+        return;
+      }
+
       // If already completed, never display onboarding again
       if (b.onboardingStatus === 'COMPLETED' || b.onboardingCompleted) {
         navigate(`/app/dashboard/${b.id}`, { replace: true });

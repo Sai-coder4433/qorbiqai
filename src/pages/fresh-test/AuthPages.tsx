@@ -242,7 +242,7 @@ export const SignupPage: React.FC = () => {
         phone.trim(),
         termsAccepted
       );
-      navigate('/app/pricing', { replace: true });
+      navigate('/app', { replace: true });
     } catch (err: any) {
       const msg = err?.message || '';
       if (
@@ -252,7 +252,7 @@ export const SignupPage: React.FC = () => {
         // Seamlessly auto-login existing user with provided credentials
         try {
           await loginWithEmail(email.trim(), password);
-          navigate('/app/pricing', { replace: true });
+          navigate('/app', { replace: true });
           return;
         } catch {
           setErrorMessage(

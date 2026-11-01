@@ -82,42 +82,39 @@ export interface FirestoreSubscriptionRecord {
 }
 
 /**
- * Save / sync user profile to Firestore
+ * Save / sync user and owner profile to Firestore
  */
 export async function syncUserProfileToFirestore(user: Partial<FirestoreUserProfile> & { uid: string }) {
   if (!db) return;
   try {
     const userRef = doc(db, 'users', user.uid);
-    const existing = await getDoc(userRef);
-    if (!existing.exists()) {
-      await setDoc(userRef, {
-        uid: user.uid,
-        email: user.email || '',
-        displayName: user.displayName || user.email?.split('@')[0] || 'User',
-        phone: user.phone || '',
-        role: user.role || 'CLIENT',
-        status: user.status || 'active',
-        onboardingStatus: user.onboardingStatus || 'NOT_STARTED',
-        onboardingCompletedAt: user.onboardingCompletedAt || null,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-    } else {
-      await updateDoc(userRef, {
-        ...user,
-        updatedAt: serverTimestamp()
-      });
-    }
+    const ownerRef = doc(db, 'owners', user.uid);
+    const profilePayload = {
+      uid: user.uid,
+      ownerId: user.uid,
+      email: user.email || '',
+      displayName: user.displayName || user.email?.split('@')[0] || 'User',
+      phone: user.phone || '',
+      role: user.role || 'CLIENT',
+      status: user.status || 'active',
+      onboardingStatus: user.onboardingStatus || 'NOT_STARTED',
+      onboardingCompletedAt: user.onboardingCompletedAt || null,
+      createdAt: user.createdAt || serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+
+    await Promise.all([
+      setDoc(userRef, profilePayload, { merge: true }),
+      setDoc(ownerRef, profilePayload, { merge: true })
+    ]);
   } catch (err: any) {
-    console.warn('[FirestoreSync] Failed to sync user profile:', err.message);
+    console.warn('[FirestoreSync] Failed to sync user/owner profile:', err.message);
   }
 }
 
 /**
- * Save business profile to Firestore
+ * Save business / shop profile to Firestore (synced to both businesses and shops)
  */
-
-// Strip undefined values — Firestore does not accept undefined fields
 function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
   return Object.fromEntries(
     Object.entries(obj).filter(([, v]) => v !== undefined)
@@ -127,16 +124,24 @@ function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
 export async function syncBusinessToFirestore(business: Partial<FirestoreBusinessRecord> & { ownerUid: string }) {
   if (!db) return;
   try {
-    const businessId = business.id || `biz_${business.ownerUid}`;
+    const businessId = business.id || `shop_${business.ownerUid}_${Date.now()}`;
     const bizRef = doc(db, 'businesses', businessId);
+    const shopRef = doc(db, 'shops', businessId);
+
     const cleaned = stripUndefined({
       ...business,
       id: businessId,
+      shopId: businessId,
       ownerUid: business.ownerUid,
+      ownerId: business.ownerUid,
       updatedAt: serverTimestamp(),
       createdAt: business.createdAt || serverTimestamp()
     });
-    await setDoc(bizRef, cleaned, { merge: true });
+
+    await Promise.all([
+      setDoc(bizRef, cleaned, { merge: true }),
+      setDoc(shopRef, cleaned, { merge: true })
+    ]);
 
     // Also sync public QR config if uniqueQrCode or googleReviewUrl is present
     const uniqueCode = business.uniqueQrCode || `code_${business.ownerUid.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8)}`;
@@ -153,7 +158,33 @@ export async function syncBusinessToFirestore(business: Partial<FirestoreBusines
       });
     }
   } catch (err: any) {
-    console.warn('[FirestoreSync] Failed to sync business:', err.message);
+    console.warn('[FirestoreSync] Failed to sync business/shop:', err.message);
+  }
+}
+
+/**
+ * Fetch all shops owned by a specific owner directly from Firestore
+ */
+export async function fetchOwnerShopsFromFirestore(ownerUid: string): Promise<any[]> {
+  if (!db || !ownerUid) return [];
+  try {
+    const qBiz = collection(db, 'businesses');
+    const snap = await getDocs(qBiz);
+    const results: any[] = [];
+    snap.forEach(docSnap => {
+      const data = docSnap.data();
+      if (data.ownerUid === ownerUid || data.ownerId === ownerUid) {
+        results.push({
+          id: docSnap.id,
+          shopId: docSnap.id,
+          ...data
+        });
+      }
+    });
+    return results;
+  } catch (err: any) {
+    console.warn('[FirestoreSync] Failed to fetch owner shops:', err.message);
+    return [];
   }
 }
 

@@ -53,6 +53,8 @@ import { ReviewPageManagePage } from './pages/fresh-test/ReviewPageManagePage.ts
 import { NfcManagementPage } from './pages/fresh-test/NfcManagementPage.tsx';
 import { CustomerActivityPage } from './pages/fresh-test/CustomerActivityPage.tsx';
 import { HelpSupportPage } from './pages/fresh-test/HelpSupportPage.tsx';
+import { OwnerDashboardPage } from './pages/fresh-test/OwnerDashboardPage.tsx';
+import { CreateShopPage } from './pages/fresh-test/CreateShopPage.tsx';
 
 // Super Admin Pages (Section 4, 5, 6, 8, 9, 10)
 import { SuperAdminLoginPage } from './pages/super-admin/SuperAdminLoginPage.tsx';
@@ -164,14 +166,53 @@ export default function App() {
             {/* ======================================================== */}
             {/* 3. CLIENT APPLICATION (/app/*) */}
             {/* ======================================================== */}
+            {/* ======================================================== */}
+            {/* 3. OWNER DASHBOARD & SHOPS HUB (/app, /app/shops) */}
+            {/* ======================================================== */}
             <Route
               path="/app"
               element={
                 <ProtectedRoute>
-                  <Navigate to="/app/dashboard" replace />
+                  <OwnerDashboardPage />
                 </ProtectedRoute>
               }
             />
+            <Route
+              path="/app/shops"
+              element={
+                <ProtectedRoute>
+                  <OwnerDashboardPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/shops/create"
+              element={
+                <ProtectedRoute>
+                  <CreateShopPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/shops/new"
+              element={
+                <ProtectedRoute>
+                  <CreateShopPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/shops/create"
+              element={
+                <ProtectedRoute>
+                  <CreateShopPage />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* ======================================================== */}
+            {/* 3.5 INDIVIDUAL SHOP WORKSPACE (/app/dashboard/*) */}
+            {/* ======================================================== */}
             <Route
               path="/app/dashboard"
               element={
@@ -196,9 +237,7 @@ export default function App() {
               path="/app/businesses"
               element={
                 <ProtectedRoute>
-                  <AppLayout>
-                    <BusinessesPage />
-                  </AppLayout>
+                  <OwnerDashboardPage />
                 </ProtectedRoute>
               }
             />

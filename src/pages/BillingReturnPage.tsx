@@ -17,6 +17,7 @@ export function BillingReturnPage() {
   const orderId = searchParams.get('order_id') || searchParams.get('cf_order_id');
   const subscriptionId = searchParams.get('subscription_id') || searchParams.get('cf_subscription_id');
   const paymentId = searchParams.get('payment_id');
+  const shopId = searchParams.get('shopId') || searchParams.get('businessId');
 
   const verifyCheckout = useCallback(async () => {
     setStatus('VERIFYING');
@@ -39,7 +40,8 @@ export function BillingReturnPage() {
         cfOrderId: orderId || undefined,
         cfSubscriptionId: subscriptionId || undefined,
         order_id: orderId || undefined,
-        subscription_id: subscriptionId || undefined
+        subscription_id: subscriptionId || undefined,
+        businessId: shopId || undefined
       });
 
       if (verification.success && verification.business) {
