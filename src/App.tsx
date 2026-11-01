@@ -10,6 +10,7 @@ import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-
 import { AuthProvider } from './lib/auth-context.tsx';
 import { BusinessProvider } from './lib/business-context.tsx';
 import { ProtectedRoute } from './components/ProtectedRoute.tsx';
+import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 
 // Layouts
 import { AppLayout } from './components/layout/AppLayout.tsx';
@@ -78,16 +79,24 @@ import { StandeeShopPage } from './pages/fresh-test/StandeeShopPage.tsx';
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BusinessProvider>
-        <BrowserRouter>
-          <Routes>
-            {/* ======================================================== */}
-            {/* 1. PUBLIC ROUTES (Section 4 & 6) */}
-            {/* ======================================================== */}
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/features" element={<FeaturesPage />} />
-            <Route path="/pricing" element={<PricingPage />} />
+    <ErrorBoundary>
+      <AuthProvider>
+        <BusinessProvider>
+          <BrowserRouter>
+            <Routes>
+              {/* ======================================================== */}
+              {/* 1. PUBLIC ROUTES (Section 4 & 6) */}
+              {/* ======================================================== */}
+              <Route path="/" element={<LandingPage />} />
+              <Route path="/features" element={<FeaturesPage />} />
+              <Route
+                path="/pricing"
+                element={
+                  <ErrorBoundary fallbackTitle="Pricing Plans Unavailable">
+                    <PricingPage />
+                  </ErrorBoundary>
+                }
+              />
             <Route path="/contact" element={<ContactPage />} />
             <Route path="/contact-us" element={<ContactPage />} />
             <Route path="/terms" element={<TermsPage />} />
@@ -246,7 +255,9 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <AppLayout>
-                    <PricingPage />
+                    <ErrorBoundary fallbackTitle="Pricing Plans Unavailable">
+                      <PricingPage />
+                    </ErrorBoundary>
                   </AppLayout>
                 </ProtectedRoute>
               }
@@ -588,5 +599,6 @@ export default function App() {
       </BrowserRouter>
     </BusinessProvider>
   </AuthProvider>
+  </ErrorBoundary>
   );
 }

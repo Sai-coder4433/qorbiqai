@@ -64,7 +64,7 @@ interface AuthContextType {
     businessName?: string,
     phone?: string,
     termsAccepted?: boolean
-  ) => Promise<void>;
+  ) => Promise<{ user: AuthUser; shopId: string }>;
   loginWithGoogle: () => Promise<void>;
   loginSuperAdmin: (email: string, pass: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
@@ -424,7 +424,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             onboardingCompleted: false
           });
         }
-        return;
+        return { user: authUser, shopId: `biz_${authUser.uid}` };
       }
     } catch (serverErr: any) {
       // If server registration fails but Firebase Auth user was created, finalize profile directly
@@ -463,7 +463,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             onboardingCompleted: false
           });
         }
-        return;
+        return { user: authUser, shopId: `biz_${firebaseUid}` };
       }
 
       const serverMsg = serverErr.message || 'Signup failed. Please try again.';

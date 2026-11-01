@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import {
   QrCode,
   ArrowRight,
@@ -8,15 +8,11 @@ import {
   Sparkles,
   RefreshCw,
   AlertCircle,
-  Zap,
-  Globe,
   CheckCircle2,
-  Calendar,
-  CreditCard,
   Lock,
   X,
-  Clock,
-  Store
+  Store,
+  ChevronRight
 } from 'lucide-react';
 import { useAuth } from '../lib/auth-context.tsx';
 import { useBusiness } from '../lib/business-context.tsx';
@@ -90,23 +86,37 @@ export const PricingPage: React.FC = () => {
   const { user } = useAuth();
   const { businesses, refreshBusinesses, activeBusiness } = useBusiness();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
 
+  // Route context: whether rendered inside client portal (/app/pricing) or public (/pricing)
+  const isInsideApp = location.pathname.startsWith('/app');
+
   // Selected shop for this payment
-  const targetShopId = searchParams.get('shopId') || searchParams.get('businessId') || activeBusiness?.id || '';
-  const targetShop = businesses.find(b => b.id === targetShopId) || activeBusiness;
+  const targetShopId = searchParams.get('shopId') || searchParams.get('businessId') || activeBusiness?.id || (businesses[0]?.id ?? '');
+  const targetShop = businesses.find(b => b?.id === targetShopId) || activeBusiness || businesses[0] || null;
 
-  // Active highlighted plan tab
-  const [activePlanId, setActivePlanId] = useState<'qorbiq_6_months' | 'qorbiq_12_months'>('qorbiq_12_months');
+  // Read initial plan from searchParams or default to 12 months
+  const planParam = searchParams.get('planId');
+  const [activePlanId, setActivePlanId] = useState<'qorbiq_6_months' | 'qorbiq_12_months'>(
+    planParam === 'qorbiq_6_months' ? 'qorbiq_6_months' : 'qorbiq_12_months'
+  );
 
-  // Checkout confirmation modal state (Requirement 8: Display selected plan and amount clearly before checkout)
+  const isJustRegistered = searchParams.get('registered') === '1' || searchParams.get('registered') === 'true';
+
+  // Checkout confirmation modal state
   const [confirmingPlan, setConfirmingPlan] = useState<QorbiqPlanItem | null>(null);
-
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
-  // Live plans from backend
+  // Live plans from backend with fallback
   const [plans, setPlans] = useState<Record<string, QorbiqPlanItem>>(OFFICIAL_PLANS);
+
+  useEffect(() => {
+    if (planParam === 'qorbiq_6_months' || planParam === 'qorbiq_12_months') {
+      setActivePlanId(planParam);
+    }
+  }, [planParam]);
 
   useEffect(() => {
     freshTestApi
@@ -115,7 +125,7 @@ export const PricingPage: React.FC = () => {
         if (res?.plans && Array.isArray(res.plans) && res.plans.length > 0) {
           const map: Record<string, QorbiqPlanItem> = {};
           res.plans.forEach(p => {
-            map[p.id] = p;
+            if (p?.id) map[p.id] = p;
           });
           setPlans(prev => ({ ...prev, ...map }));
         }
@@ -125,14 +135,14 @@ export const PricingPage: React.FC = () => {
       });
   }, []);
 
-  const plan6 = plans['qorbiq_6_months'] || OFFICIAL_PLANS.qorbiq_6_months;
-  const plan12 = plans['qorbiq_12_months'] || OFFICIAL_PLANS.qorbiq_12_months;
+  const plan6 = plans?.['qorbiq_6_months'] || OFFICIAL_PLANS.qorbiq_6_months;
+  const plan12 = plans?.['qorbiq_12_months'] || OFFICIAL_PLANS.qorbiq_12_months;
 
   // Step 1: Open order confirmation review before checkout
   const handleInitiateOrder = (plan: QorbiqPlanItem) => {
     setCheckoutError(null);
     if (!user) {
-      navigate(`/signup?planId=${plan.id}&amount=${plan.price}${targetShopId ? `&shopId=${targetShopId}` : ''}`);
+      navigate(`/signup?planId=${plan.id}&amount=${plan.price}${targetShopId ? `&shopId=${encodeURIComponent(targetShopId)}` : ''}`);
       return;
     }
     setConfirmingPlan(plan);
@@ -161,7 +171,7 @@ export const PricingPage: React.FC = () => {
       if (intent.provider === 'CASHFREE' && intent.paymentSessionId) {
         await openCashfreeCheckout({
           paymentSessionId: intent.paymentSessionId,
-          mode: intent.environment || 'sandbox'
+          mode: intent.environment || 'production'
         });
         return;
       }
@@ -213,317 +223,345 @@ export const PricingPage: React.FC = () => {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-blue-100 selection:text-blue-900">
-      <PublicNavbar activePage="pricing" />
+  // Main Pricing Content
+  const pricingContent = (
+    <div className="space-y-10">
+      {/* Registration Success Banner */}
+      {isJustRegistered && (
+        <div className="max-w-2xl mx-auto p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center gap-3 text-xs text-emerald-900 font-semibold shadow-xs animate-in fade-in duration-200">
+          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+          <span>Account created successfully! Choose an access plan below to activate your shop workspace and review stand.</span>
+        </div>
+      )}
 
-      <main className="flex-1 py-14 px-4 sm:px-6 max-w-6xl mx-auto space-y-12">
-        {/* Header & Badges */}
-        <div className="text-center space-y-4">
-          <div className="inline-flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-700 px-3.5 py-1 rounded-full text-xs font-bold tracking-wide uppercase">
-            <Lock className="w-3.5 h-3.5" />
-            <span>Official One-Time Payment Plans</span>
-          </div>
-
-          <h1 className="text-4xl sm:text-5xl font-black text-slate-900 tracking-tight">
-            Simple, Transparent Pricing
-          </h1>
-
-          <p className="text-sm sm:text-base text-slate-600 max-w-2xl mx-auto leading-relaxed">
-            Choose exactly the access duration that works best for your business. Both plans are{' '}
-            <strong className="text-slate-900 font-bold">100% One-Time Payments</strong> with{' '}
-            <strong className="text-slate-900 font-bold">Zero Recurring Debits</strong>, no bank mandates, and manual renewal upon expiry.
-          </p>
-
-          {/* Targeted Shop Indicator */}
-          {targetShopId && (
-            <div className="max-w-md mx-auto p-3 bg-blue-50 border border-blue-200 rounded-2xl flex items-center justify-between text-xs text-blue-900 shadow-xs">
-              <div className="flex items-center gap-2">
-                <Store className="w-4 h-4 text-blue-600 shrink-0" />
-                <span>Activating Access for: <strong>{targetShop?.businessName || targetShop?.shopName || targetShopId}</strong></span>
-              </div>
-              <span className="font-mono text-[10px] text-blue-700 bg-white px-2 py-0.5 rounded-md border border-blue-200">
-                {targetShopId.slice(0, 16)}
-              </span>
+      {/* Inside App Header Breadcrumb */}
+      {isInsideApp && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-200/80 gap-3">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+              <Link to="/app/shops" className="hover:text-blue-600 transition-colors">My Shops</Link>
+              <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+              <span className="text-slate-800 font-bold">Activate Shop Plan</span>
             </div>
-          )}
-
-          {/* Plan Selector Buttons */}
-          <div className="pt-2 flex items-center justify-center">
-            <div className="bg-slate-200/80 p-1.5 rounded-2xl flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => setActivePlanId('qorbiq_6_months')}
-                className={`px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-                  activePlanId === 'qorbiq_6_months'
-                    ? 'bg-white text-blue-600 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                6 Months (₹1,800 INR)
-              </button>
-              <button
-                type="button"
-                onClick={() => setActivePlanId('qorbiq_12_months')}
-                className={`px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1.5 cursor-pointer ${
-                  activePlanId === 'qorbiq_12_months'
-                    ? 'bg-white text-blue-600 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <span>12 Months (₹2,999 INR)</span>
-                <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                  Save ₹601
-                </span>
-              </button>
-            </div>
+            <h1 className="text-2xl font-black text-slate-900 tracking-tight">Choose Your Access Plan</h1>
           </div>
+          <Link
+            to="/app/shops"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-2xs self-start sm:self-auto cursor-pointer"
+          >
+            <Store className="w-4 h-4 text-blue-600" />
+            <span>All Shops (Owner Hub)</span>
+          </Link>
+        </div>
+      )}
+
+      {/* Header & Badges */}
+      <div className="text-center space-y-4">
+        <div className="inline-flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-700 px-3.5 py-1 rounded-full text-xs font-bold tracking-wide uppercase">
+          <Lock className="w-3.5 h-3.5" />
+          <span>Official One-Time Payment Plans</span>
         </div>
 
-        {/* Global Error Notice */}
-        {checkoutError && (
-          <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-3 text-xs text-rose-700 font-medium max-w-2xl mx-auto">
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-            <span>{checkoutError}</span>
+        <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-slate-900 tracking-tight">
+          Simple, Transparent Pricing
+        </h2>
+
+        <p className="text-xs sm:text-sm md:text-base text-slate-600 max-w-2xl mx-auto leading-relaxed">
+          Choose exactly the access duration that works best for your business. Both plans are{' '}
+          <strong className="text-slate-900 font-bold">100% One-Time Payments</strong> with{' '}
+          <strong className="text-slate-900 font-bold">Zero Recurring Debits</strong>, no bank mandates, and manual renewal upon expiry.
+        </p>
+
+        {/* Targeted Shop Indicator */}
+        {targetShopId && (
+          <div className="max-w-md mx-auto p-3 bg-blue-50/90 border border-blue-200 rounded-2xl flex items-center justify-between text-xs text-blue-900 shadow-xs">
+            <div className="flex items-center gap-2 truncate">
+              <Store className="w-4 h-4 text-blue-600 shrink-0" />
+              <span className="truncate">
+                Activating Access for: <strong>{targetShop?.businessName || (targetShop as any)?.shopName || targetShopId}</strong>
+              </span>
+            </div>
+            <span className="font-mono text-[10px] text-blue-700 bg-white px-2 py-0.5 rounded-md border border-blue-200 shrink-0 ml-2">
+              {targetShopId.slice(0, 16)}
+            </span>
           </div>
         )}
 
-        {/* THE TWO EXACT ONE-TIME PAYMENT PLANS */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-stretch">
-          
-          {/* ========================================================= */}
-          {/* PLAN 1: HALF-YEARLY (Qorbiq AI – 6 Months) */}
-          {/* ========================================================= */}
-          <div
-            className={`bg-white rounded-3xl p-6 sm:p-8 border-2 transition-all flex flex-col justify-between space-y-6 relative ${
-              activePlanId === 'qorbiq_6_months'
-                ? 'border-blue-600 shadow-xl ring-2 ring-blue-600/10'
-                : 'border-slate-200 shadow-xs hover:border-slate-300'
-            }`}
-          >
-            <div className="space-y-6">
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">
-                    Half-Yearly Plan
-                  </span>
-                  <span className="text-xs font-bold text-slate-500">180 Days Access</span>
-                </div>
-                <h2 className="text-2xl font-black text-slate-900">{plan6.name}</h2>
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  {plan6.description}
-                </p>
-              </div>
-
-              {/* Price Block */}
-              <div className="pt-2 pb-3 border-b border-slate-100">
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-4xl sm:text-5xl font-black text-slate-900">
-                    ₹{plan6.price.toLocaleString()}
-                  </span>
-                  <span className="text-sm font-bold text-slate-500">INR</span>
-                  <span className="text-xs font-semibold text-slate-400">/ 180 Days</span>
-                </div>
-                <span className="text-[11px] text-slate-500 mt-1 block">
-                  Single one-time payment of ₹1,800 · No automatic debits · Manual renewal
-                </span>
-              </div>
-
-              {/* Policy & Specifications Matrix */}
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2 text-xs">
-                <div className="grid grid-cols-2 gap-3 text-slate-600">
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Billing Type</span>
-                    <span className="font-semibold text-slate-900">One-Time Payment</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Access Duration</span>
-                    <span className="font-semibold text-slate-900">180 Days</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Auto Renewal</span>
-                    <span className="font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md inline-block">
-                      Disabled
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Renewal</span>
-                    <span className="font-semibold text-slate-900">Manual</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Features List */}
-              <div className="space-y-2.5">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
-                  What&apos;s Included in 6 Months:
-                </span>
-                {plan6.features.map((f, i) => (
-                  <div key={i} className="flex items-center gap-2.5 text-xs text-slate-700">
-                    <Check className="w-4 h-4 text-blue-600 shrink-0" />
-                    <span>{f}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Action Button */}
-            <div className="pt-4 border-t border-slate-100 space-y-2">
-              <button
-                type="button"
-                onClick={() => handleInitiateOrder(plan6)}
-                className="w-full py-3.5 px-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer bg-slate-900 hover:bg-slate-800 text-white shadow-md hover:scale-[1.01]"
-              >
-                <span>Choose 6 Months — ₹1,800 INR</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-              <div className="flex items-center justify-center gap-2 text-[11px] text-slate-400">
-                <Lock className="w-3 h-3 text-slate-400" />
-                <span>Cashfree 256-Bit SSL Encrypted PG Checkout</span>
-              </div>
-            </div>
+        {/* Plan Selector Buttons */}
+        <div className="pt-2 flex items-center justify-center">
+          <div className="bg-slate-200/80 p-1.5 rounded-2xl flex items-center gap-1 shadow-inner">
+            <button
+              type="button"
+              onClick={() => setActivePlanId('qorbiq_6_months')}
+              className={`px-4 sm:px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+                activePlanId === 'qorbiq_6_months'
+                  ? 'bg-white text-blue-600 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              6 Months (₹1,800 INR)
+            </button>
+            <button
+              type="button"
+              onClick={() => setActivePlanId('qorbiq_12_months')}
+              className={`px-4 sm:px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1.5 cursor-pointer ${
+                activePlanId === 'qorbiq_12_months'
+                  ? 'bg-white text-blue-600 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>12 Months (₹2,999 INR)</span>
+              <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                Save ₹601
+              </span>
+            </button>
           </div>
+        </div>
+      </div>
 
-          {/* ========================================================= */}
-          {/* PLAN 2: YEARLY (Qorbiq AI – 12 Months) */}
-          {/* ========================================================= */}
-          <div
-            className={`bg-white rounded-3xl p-6 sm:p-8 border-2 transition-all flex flex-col justify-between space-y-6 relative overflow-hidden ${
-              activePlanId === 'qorbiq_12_months'
-                ? 'border-blue-600 shadow-xl ring-2 ring-blue-600/10'
-                : 'border-slate-200 shadow-xs hover:border-slate-300'
-            }`}
-          >
-            {/* Best Value Ribbon */}
-            <div className="absolute top-5 right-5">
-              <span className="inline-flex items-center gap-1 bg-emerald-500 text-white font-black text-[10px] uppercase tracking-wider px-3 py-1 rounded-full shadow-xs">
-                <Sparkles className="w-3 h-3" />
-                <span>Best Value · Save ₹601</span>
+      {/* Global Error Notice */}
+      {checkoutError && (
+        <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-3 text-xs text-rose-700 font-medium max-w-2xl mx-auto shadow-xs">
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          <span>{checkoutError}</span>
+        </div>
+      )}
+
+      {/* THE TWO EXACT ONE-TIME PAYMENT PLANS */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-stretch">
+        
+        {/* ========================================================= */}
+        {/* PLAN 1: HALF-YEARLY (Qorbiq AI – 6 Months) */}
+        {/* ========================================================= */}
+        <div
+          className={`bg-white rounded-3xl p-6 sm:p-8 border-2 transition-all flex flex-col justify-between space-y-6 relative ${
+            activePlanId === 'qorbiq_6_months'
+              ? 'border-blue-600 shadow-xl ring-2 ring-blue-600/10'
+              : 'border-slate-200 shadow-xs hover:border-slate-300'
+          }`}
+        >
+          <div className="space-y-6">
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">
+                  Half-Yearly Plan
+                </span>
+                <span className="text-xs font-bold text-slate-500">{plan6.durationDays} Days Access</span>
+              </div>
+              <h3 className="text-2xl font-black text-slate-900">{plan6.name}</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                {plan6.description}
+              </p>
+            </div>
+
+            {/* Price Block */}
+            <div className="pt-2 pb-3 border-b border-slate-100">
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-4xl sm:text-5xl font-black text-slate-900">
+                  ₹{plan6.price.toLocaleString()}
+                </span>
+                <span className="text-sm font-bold text-slate-500">INR</span>
+                <span className="text-xs font-semibold text-slate-400">/ 180 Days</span>
+              </div>
+              <span className="text-[11px] text-slate-500 mt-1 block">
+                Single one-time payment of ₹1,800 · No automatic debits · Manual renewal
               </span>
             </div>
 
-            <div className="space-y-6">
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">
-                    Yearly Plan
+            {/* Policy & Specifications Matrix */}
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2 text-xs">
+              <div className="grid grid-cols-2 gap-3 text-slate-600">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Billing Type</span>
+                  <span className="font-semibold text-slate-900">One-Time Payment</span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Access Duration</span>
+                  <span className="font-semibold text-slate-900">180 Days</span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Auto Renewal</span>
+                  <span className="font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md inline-block">
+                    Disabled
                   </span>
-                  <span className="text-xs font-bold text-slate-500">365 Days Access</span>
                 </div>
-                <h2 className="text-2xl font-black text-slate-900">{plan12.name}</h2>
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  {plan12.description}
-                </p>
-              </div>
-
-              {/* Price Block */}
-              <div className="pt-2 pb-3 border-b border-slate-100">
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-4xl sm:text-5xl font-black text-slate-900">
-                    ₹{plan12.price.toLocaleString()}
-                  </span>
-                  <span className="text-sm font-bold text-slate-500">INR</span>
-                  <span className="text-xs font-semibold text-slate-400">/ 365 Days</span>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Renewal</span>
+                  <span className="font-semibold text-slate-900">Manual</span>
                 </div>
-                <span className="text-[11px] text-slate-500 mt-1 block">
-                  Single one-time payment of ₹2,999 · Save ₹601 vs two 6-month cycles · No mandates
-                </span>
-              </div>
-
-              {/* Policy & Specifications Matrix */}
-              <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100 space-y-2 text-xs">
-                <div className="grid grid-cols-2 gap-3 text-slate-600">
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Billing Type</span>
-                    <span className="font-semibold text-slate-900">One-Time Payment</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Access Duration</span>
-                    <span className="font-semibold text-slate-900">365 Days (1 Full Year)</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Auto Renewal</span>
-                    <span className="font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md inline-block">
-                      Disabled
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Renewal</span>
-                    <span className="font-semibold text-slate-900">Manual</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Features List */}
-              <div className="space-y-2.5">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
-                  What&apos;s Included in 12 Months:
-                </span>
-                {plan12.features.map((f, i) => (
-                  <div key={i} className="flex items-center gap-2.5 text-xs text-slate-700">
-                    <Check className="w-4 h-4 text-blue-600 shrink-0" />
-                    <span>{f}</span>
-                  </div>
-                ))}
               </div>
             </div>
 
-            {/* Action Button */}
-            <div className="pt-4 border-t border-slate-100 space-y-2">
-              <button
-                type="button"
-                onClick={() => handleInitiateOrder(plan12)}
-                className="w-full py-3.5 px-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:scale-[1.01]"
-              >
-                <span>Choose 12 Months — ₹2,999 INR</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-              <div className="flex items-center justify-center gap-2 text-[11px] text-slate-400">
-                <Lock className="w-3 h-3 text-slate-400" />
-                <span>Cashfree 256-Bit SSL Encrypted PG Checkout</span>
-              </div>
+            {/* Features List */}
+            <div className="space-y-2.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+                What&apos;s Included in 6 Months:
+              </span>
+              {(plan6?.features || []).map((f, i) => (
+                <div key={i} className="flex items-center gap-2.5 text-xs text-slate-700">
+                  <Check className="w-4 h-4 text-blue-600 shrink-0" />
+                  <span>{f}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Action Button */}
+          <div className="pt-4 border-t border-slate-100 space-y-2">
+            <button
+              type="button"
+              onClick={() => handleInitiateOrder(plan6)}
+              className="w-full py-3.5 px-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:scale-[1.01]"
+            >
+              <span>Choose 6 Months — ₹1,800 INR</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+            <div className="flex items-center justify-center gap-2 text-[11px] text-slate-400">
+              <Lock className="w-3 h-3 text-slate-400" />
+              <span>Cashfree 256-Bit SSL Encrypted PG Checkout</span>
             </div>
           </div>
         </div>
 
-        {/* Clear Guarantee & Terms Highlights */}
-        <section className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-6">
-          <h3 className="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2">
-            <ShieldCheck className="w-5 h-5 text-blue-600" />
-            <span>Qorbiq AI Payment Policy & Deliverables</span>
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs text-slate-600 leading-relaxed">
+        {/* ========================================================= */}
+        {/* PLAN 2: YEARLY (Qorbiq AI – 12 Months) */}
+        {/* ========================================================= */}
+        <div
+          className={`bg-white rounded-3xl p-6 sm:p-8 border-2 transition-all flex flex-col justify-between space-y-6 relative overflow-hidden ${
+            activePlanId === 'qorbiq_12_months'
+              ? 'border-blue-600 shadow-xl ring-2 ring-blue-600/10'
+              : 'border-slate-200 shadow-xs hover:border-slate-300'
+          }`}
+        >
+          {/* Best Value Ribbon */}
+          <div className="absolute top-5 right-5">
+            <span className="inline-flex items-center gap-1 bg-emerald-500 text-white font-black text-[10px] uppercase tracking-wider px-3 py-1 rounded-full shadow-xs">
+              <Sparkles className="w-3 h-3" />
+              <span>Best Value · Save ₹601</span>
+            </span>
+          </div>
+
+          <div className="space-y-6">
             <div className="space-y-1.5">
-              <span className="font-bold text-slate-900 block text-sm">1. Zero Auto-Debit Mandates</span>
-              <p>
-                Both plans are strictly one-time payments. We do not register e-NACH mandates or recurring UPI autopay debits. You are charged only once per purchase.
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">
+                  Yearly Plan
+                </span>
+                <span className="text-xs font-bold text-slate-500">{plan12.durationDays} Days Access</span>
+              </div>
+              <h3 className="text-2xl font-black text-slate-900">{plan12.name}</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                {plan12.description}
               </p>
             </div>
-            <div className="space-y-1.5">
-              <span className="font-bold text-slate-900 block text-sm">2. Guaranteed Access Period</span>
-              <p>
-                Your business workspace, dynamic QR codes, and AI review generation remain fully active for the exact duration of your plan (180 Days or 365 Days).
-              </p>
+
+            {/* Price Block */}
+            <div className="pt-2 pb-3 border-b border-slate-100">
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-4xl sm:text-5xl font-black text-slate-900">
+                  ₹{plan12.price.toLocaleString()}
+                </span>
+                <span className="text-sm font-bold text-slate-500">INR</span>
+                <span className="text-xs font-semibold text-slate-400">/ 365 Days</span>
+              </div>
+              <span className="text-[11px] text-slate-500 mt-1 block">
+                Single one-time payment of ₹2,999 · Save ₹601 vs two 6-month cycles · No mandates
+              </span>
             </div>
-            <div className="space-y-1.5">
-              <span className="font-bold text-slate-900 block text-sm">3. Verified Invoices & Security</span>
-              <p>
-                All payments are processed securely via Cashfree PG with server-side validation. Official PDF tax invoices are generated only after verified successful payment.
-              </p>
+
+            {/* Policy & Specifications Matrix */}
+            <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100 space-y-2 text-xs">
+              <div className="grid grid-cols-2 gap-3 text-slate-600">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Billing Type</span>
+                  <span className="font-semibold text-slate-900">One-Time Payment</span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Access Duration</span>
+                  <span className="font-semibold text-slate-900">365 Days (1 Full Year)</span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Auto Renewal</span>
+                  <span className="font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md inline-block">
+                    Disabled
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Renewal</span>
+                  <span className="font-semibold text-slate-900">Manual</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Features List */}
+            <div className="space-y-2.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+                What&apos;s Included in 12 Months:
+              </span>
+              {(plan12?.features || []).map((f, i) => (
+                <div key={i} className="flex items-center gap-2.5 text-xs text-slate-700">
+                  <Check className="w-4 h-4 text-blue-600 shrink-0" />
+                  <span>{f}</span>
+                </div>
+              ))}
             </div>
           </div>
-        </section>
-      </main>
+
+          {/* Action Button */}
+          <div className="pt-4 border-t border-slate-100 space-y-2">
+            <button
+              type="button"
+              onClick={() => handleInitiateOrder(plan12)}
+              className="w-full py-3.5 px-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:scale-[1.01]"
+            >
+              <span>Choose 12 Months — ₹2,999 INR</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+            <div className="flex items-center justify-center gap-2 text-[11px] text-slate-400">
+              <Lock className="w-3 h-3 text-slate-400" />
+              <span>Cashfree 256-Bit SSL Encrypted PG Checkout</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Clear Guarantee & Terms Highlights */}
+      <section className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-6">
+        <h3 className="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2">
+          <ShieldCheck className="w-5 h-5 text-blue-600" />
+          <span>Qorbiq AI Payment Policy & Deliverables</span>
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs text-slate-600 leading-relaxed">
+          <div className="space-y-1.5">
+            <span className="font-bold text-slate-900 block text-sm">1. Zero Auto-Debit Mandates</span>
+            <p>
+              Both plans are strictly one-time payments. We do not register e-NACH mandates or recurring UPI autopay debits. You are charged only once per purchase.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <span className="font-bold text-slate-900 block text-sm">2. Guaranteed Access Period</span>
+            <p>
+              Your business workspace, dynamic QR codes, and AI review generation remain fully active for the exact duration of your plan (180 Days or 365 Days).
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <span className="font-bold text-slate-900 block text-sm">3. Verified Invoices & Security</span>
+            <p>
+              All payments are processed securely via Cashfree PG with server-side validation. Official PDF tax invoices are generated only after verified successful payment.
+            </p>
+          </div>
+        </div>
+      </section>
 
       {/* ============================================================= */}
-      {/* REQUIREMENT 8: ORDER CONFIRMATION MODAL BEFORE CHECKOUT */}
+      {/* ORDER CONFIRMATION MODAL BEFORE CHECKOUT */}
       {/* ============================================================= */}
       {confirmingPlan && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl p-6 sm:p-8 space-y-6">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-blue-600 text-white font-extrabold flex items-center justify-center text-sm">
+                <div className="w-8 h-8 rounded-xl bg-blue-600 text-white font-extrabold flex items-center justify-center text-sm shadow-xs">
                   Q
                 </div>
                 <h3 className="text-lg font-black text-slate-900">Review Order Details</h3>
@@ -619,7 +657,23 @@ export const PricingPage: React.FC = () => {
           </div>
         </div>
       )}
+    </div>
+  );
 
+  if (isInsideApp) {
+    return (
+      <div className="max-w-6xl mx-auto py-2">
+        {pricingContent}
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-blue-100 selection:text-blue-900">
+      <PublicNavbar activePage="pricing" />
+      <main className="flex-1 py-14 px-4 sm:px-6 max-w-6xl mx-auto space-y-12 w-full">
+        {pricingContent}
+      </main>
       <PublicFooter />
     </div>
   );

@@ -362,3 +362,4 @@ export const CreateShopPage: React.FC = () => {
     </div>
   );
 };
+

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import {
   QrCode,
   ArrowRight,
@@ -186,7 +186,11 @@ export const LoginPage: React.FC = () => {
 // ========================================================
 export const SignupPage: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { signupWithEmail, loginWithEmail, user } = useAuth();
+
+  const preselectedPlanId = searchParams.get('planId') || 'qorbiq_12_months';
+  const preselectedShopId = searchParams.get('shopId') || '';
 
   const [name, setName] = useState('');
   const [businessName, setBusinessName] = useState('');
@@ -199,6 +203,14 @@ export const SignupPage: React.FC = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  // If already authenticated, proceed directly to Pricing page
+  useEffect(() => {
+    if (user) {
+      const destinationShopId = preselectedShopId || '';
+      navigate(`/app/pricing?shopId=${encodeURIComponent(destinationShopId)}&planId=${encodeURIComponent(preselectedPlanId)}`, { replace: true });
+    }
+  }, [user, preselectedShopId, preselectedPlanId, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -234,7 +246,7 @@ export const SignupPage: React.FC = () => {
     setLoading(true);
     setErrorMessage('');
     try {
-      await signupWithEmail(
+      const res = await signupWithEmail(
         email.trim(),
         password,
         name.trim(),
@@ -242,7 +254,8 @@ export const SignupPage: React.FC = () => {
         phone.trim(),
         termsAccepted
       );
-      navigate('/app', { replace: true });
+      const destinationShopId = res?.shopId || preselectedShopId || '';
+      navigate(`/app/pricing?shopId=${encodeURIComponent(destinationShopId)}&planId=${encodeURIComponent(preselectedPlanId)}&registered=1`, { replace: true });
     } catch (err: any) {
       const msg = err?.message || '';
       if (
@@ -251,8 +264,9 @@ export const SignupPage: React.FC = () => {
       ) {
         // Seamlessly auto-login existing user with provided credentials
         try {
-          await loginWithEmail(email.trim(), password);
-          navigate('/app', { replace: true });
+          const loggedIn = await loginWithEmail(email.trim(), password);
+          const destinationShopId = preselectedShopId || `biz_${loggedIn.uid}`;
+          navigate(`/app/pricing?shopId=${encodeURIComponent(destinationShopId)}&planId=${encodeURIComponent(preselectedPlanId)}&registered=1`, { replace: true });
           return;
         } catch {
           setErrorMessage(

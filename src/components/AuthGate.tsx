@@ -2,7 +2,7 @@ import React from 'react';
 import { Navigate, useLocation, useParams, Link } from 'react-router-dom';
 import { useAuth } from '../lib/auth-context.tsx';
 import { useBusiness } from '../lib/business-context.tsx';
-import { ShieldAlert, Sparkles, Building2 } from 'lucide-react';
+import { ShieldAlert, Sparkles } from 'lucide-react';
 
 interface AuthGateProps {
   children: React.ReactNode;
@@ -40,7 +40,8 @@ export const AuthGate: React.FC<AuthGateProps> = ({ children, requireSuperAdmin 
     if (requireSuperAdmin) {
       return <Navigate to="/super-admin/login" replace />;
     }
-    return <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} replace />;
+    const fullRedirect = location.pathname + location.search;
+    return <Navigate to={`/login?redirect=${encodeURIComponent(fullRedirect)}`} replace />;
   }
 
   // 2. Super Admin Check
@@ -59,10 +60,10 @@ export const AuthGate: React.FC<AuthGateProps> = ({ children, requireSuperAdmin 
           </div>
           <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2">
             <Link
-              to="/app/dashboard"
+              to="/app"
               className="w-full sm:w-auto px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold rounded-xl transition-colors"
             >
-              Return to Client App
+              Return to Client Portal
             </Link>
           </div>
         </div>
@@ -75,24 +76,43 @@ export const AuthGate: React.FC<AuthGateProps> = ({ children, requireSuperAdmin 
     return <>{children}</>;
   }
 
-  // 3. User has ZERO businesses
-  if (businesses.length === 0) {
-    const isPricingOrBusinesses =
-      location.pathname === '/app/pricing' ||
-      location.pathname === '/pricing' ||
-      location.pathname === '/app/businesses';
+  // 3. EXEMPT ROUTES: Pricing, Shop Management, Hub, Billing Return
+  // Critical Fix: These routes must NEVER be intercepted or redirected to onboarding,
+  // preventing infinite redirect loops and blank white screens!
+  const isPricingRoute =
+    location.pathname === '/app/pricing' ||
+    location.pathname === '/pricing';
 
-    if (!isPricingOrBusinesses) {
-      return <Navigate to="/app/pricing" replace />;
-    }
+  const isShopManagementRoute =
+    location.pathname === '/app' ||
+    location.pathname === '/app/shops' ||
+    location.pathname === '/app/shops/create' ||
+    location.pathname === '/app/shops/new' ||
+    location.pathname === '/shops/create' ||
+    location.pathname === '/app/businesses';
+
+  const isBillingRoute =
+    location.pathname.startsWith('/app/billing') ||
+    location.pathname.startsWith('/billing');
+
+  const isOnboardingRoute =
+    location.pathname.startsWith('/onboarding') ||
+    location.pathname.startsWith('/app/onboarding');
+
+  // Immediately allow exempt routes to render
+  if (isPricingRoute || isShopManagementRoute || isBillingRoute) {
     return <>{children}</>;
   }
 
-  // 4. Resolve Target Business (from URL param or active selection)
+  // 4. User has ZERO businesses -> route to Pricing to purchase first plan
+  if (businesses.length === 0) {
+    return <Navigate to="/app/pricing" replace />;
+  }
+
+  // 5. Resolve Target Business (from URL param or active selection)
   let targetBusiness = activeBusiness;
   if (params.businessId) {
     targetBusiness = businesses.find(b => b.id === params.businessId) || null;
-    // TEST 9: User tries to access Business B using Business A URL or unowned business -> 403
     if (!targetBusiness) {
       return (
         <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 font-sans">
@@ -105,10 +125,10 @@ export const AuthGate: React.FC<AuthGateProps> = ({ children, requireSuperAdmin 
               You do not have permission to view or manage this business workspace.
             </p>
             <Link
-              to="/app/dashboard"
+              to="/app"
               className="inline-flex items-center justify-center px-5 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-semibold hover:bg-blue-700 transition"
             >
-              Return to Your Active Business
+              Return to Your Shops Hub
             </Link>
           </div>
         </div>
@@ -120,26 +140,35 @@ export const AuthGate: React.FC<AuthGateProps> = ({ children, requireSuperAdmin 
     targetBusiness = businesses[0];
   }
 
+  const isPaid =
+    (targetBusiness as any).paymentStatus === 'paid' ||
+    (targetBusiness as any).paymentStatus === 'PAID' ||
+    Boolean(targetBusiness.subscription) ||
+    ((targetBusiness as any).amountPaid && (targetBusiness as any).amountPaid > 0);
+
   const isOnboardingComplete =
     targetBusiness.onboardingStatus === 'COMPLETED' || Boolean(targetBusiness.onboardingCompleted);
 
-  const isOnboardingRoute =
-    location.pathname.startsWith('/onboarding') ||
-    location.pathname.startsWith('/app/onboarding');
-
-  // 5. If business onboarding is INCOMPLETE:
-  // Must NOT render /app/dashboard. Direct URL access must not bypass guard.
+  // 6. If business onboarding is INCOMPLETE:
   if (!isOnboardingComplete) {
+    // If unpaid, intercept attempts to enter dashboard or onboarding
+    if (!isPaid) {
+      if (location.pathname.startsWith('/app/dashboard') || isOnboardingRoute) {
+        return <Navigate to={`/app/pricing?shopId=${targetBusiness.id}`} replace />;
+      }
+    }
+
+    // If paid but onboarding incomplete, ensure user stays on onboarding for dashboard feature requests
     if (!isOnboardingRoute) {
       return <Navigate to={`/app/onboarding/${targetBusiness.id}`} replace />;
     }
     return <>{children}</>;
   }
 
-  // 6. If business onboarding is COMPLETE:
-  // Cannot re-enter onboarding.
+  // 7. If business onboarding is COMPLETE:
+  // Cannot re-enter onboarding
   if (isOnboardingRoute) {
-    return <Navigate to="/app/dashboard" replace />;
+    return <Navigate to={`/app/dashboard/${targetBusiness.id}`} replace />;
   }
 
   return <>{children}</>;
