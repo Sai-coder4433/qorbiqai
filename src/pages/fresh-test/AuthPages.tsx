@@ -29,7 +29,7 @@ export const LoginPage: React.FC = () => {
   const { loginWithEmail, user, logout } = useAuth();
 
   const searchParams = new URLSearchParams(location.search);
-  const redirectUrl = searchParams.get('redirect') || '/app/dashboard';
+  const redirectUrl = searchParams.get('redirect') || '/app';
 
   const [email, setEmail] = useState(searchParams.get('email') || '');
   const [password, setPassword] = useState('');

@@ -254,43 +254,61 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loginWithEmail = async (email: string, pass: string): Promise<AuthUser> => {
     setError(null);
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPass = pass.trim();
 
     // Primary: Firebase Authentication as real source of truth for user credentials (Section 3, 5, 6)
     if (auth && isFirebaseConfigured) {
       try {
-        const cred = await signInWithEmailAndPassword(auth, email, pass);
+        const cred = await signInWithEmailAndPassword(auth, cleanEmail, pass);
         const synced = await syncBackendUser(cred.user);
         return synced;
       } catch (fbErr: any) {
-        const formatted = formatFirebaseAuthError(fbErr);
-        // Fallback to server login ONLY if Firebase had network connectivity failure or configuration is pending
-        if (fbErr?.code === 'auth/network-request-failed' || fbErr?.code === 'auth/configuration-not-found') {
+        // Try with trimmed password if different
+        if (cleanPass !== pass) {
           try {
-            const res = await freshTestApi.clientLogin({ email: email.trim(), password: pass });
-            if (res && res.user) {
-              const hasCompleted = res.user.onboardingStatus === 'COMPLETED' || Boolean(res.business?.onboardingCompleted);
-              const authUser: AuthUser = {
-                uid: res.user.uid,
-                email: res.user.email,
-                displayName: res.user.displayName,
-                role: res.user.role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'CLIENT',
-                organizationId: 'org_' + res.user.uid,
-                status: res.user.status || 'active',
-                language: 'en',
-                timezone: 'UTC',
-                emailVerified: res.user.emailVerified ?? false,
-                onboardingStatus: hasCompleted ? 'COMPLETED' : (res.user.onboardingStatus || 'NOT_STARTED'),
-                onboardingCompletedAt: res.user.onboardingCompletedAt || (hasCompleted ? new Date().toISOString() : null),
-                onboardingVersion: res.user.onboardingVersion || 1
-              };
-              setUser(authUser);
-              localStorage.setItem('saas_auth_user', JSON.stringify(authUser));
-              return authUser;
-            }
-          } catch {
-            // Fall through to throw original formatted Firebase error
-          }
+            const cred = await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
+            const synced = await syncBackendUser(cred.user);
+            return synced;
+          } catch {}
         }
+        // Try with original email casing
+        if (email.trim() !== cleanEmail) {
+          try {
+            const cred = await signInWithEmailAndPassword(auth, email.trim(), pass);
+            const synced = await syncBackendUser(cred.user);
+            return synced;
+          } catch {}
+        }
+
+        // Secondary fallback to server login if Firebase credentials have sync lag or mismatch
+        try {
+          const res = await freshTestApi.clientLogin({ email: cleanEmail, password: pass });
+          if (res && res.user) {
+            const hasCompleted = res.user.onboardingStatus === 'COMPLETED' || Boolean(res.business?.onboardingCompleted);
+            const authUser: AuthUser = {
+              uid: res.user.uid,
+              email: res.user.email,
+              displayName: res.user.displayName,
+              role: res.user.role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'CLIENT',
+              organizationId: 'org_' + res.user.uid,
+              status: res.user.status || 'active',
+              language: 'en',
+              timezone: 'UTC',
+              emailVerified: res.user.emailVerified ?? false,
+              onboardingStatus: hasCompleted ? 'COMPLETED' : (res.user.onboardingStatus || 'NOT_STARTED'),
+              onboardingCompletedAt: res.user.onboardingCompletedAt || (hasCompleted ? new Date().toISOString() : null),
+              onboardingVersion: res.user.onboardingVersion || 1
+            };
+            setUser(authUser);
+            localStorage.setItem('saas_auth_user', JSON.stringify(authUser));
+            return authUser;
+          }
+        } catch {
+          // If server login also fails, throw formatted error
+        }
+
+        const formatted = formatFirebaseAuthError(fbErr);
         setError(formatted);
         throw new Error(formatted);
       }
