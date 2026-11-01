@@ -97,8 +97,10 @@ export const OnboardingWizardPage: React.FC = () => {
   const isCityValid = city.trim().length >= 2 && !meaninglessWords.includes(city.trim().toLowerCase());
   const isStateValid = stateName.trim().length >= 2;
   const isLanguageValid = primaryLanguage.trim().length >= 2;
+  const cleanedPhone = phone.replace(/[^0-9]/g, '');
+  const isPhoneValid = cleanedPhone.length >= 10;
 
-  const isStep1Valid = isNameValid && isCategoryValid && isDescriptionValid && isCityValid && isStateValid && isLanguageValid;
+  const isStep1Valid = isNameValid && isCategoryValid && isDescriptionValid && isCityValid && isStateValid && isLanguageValid && isPhoneValid;
 
   // Validation for Step 2
   const validateGoogleUrl = (url: string): boolean => {
@@ -241,7 +243,14 @@ export const OnboardingWizardPage: React.FC = () => {
 
   // STEP 1 -> STEP 2 Transition
   const handleProceedToStep2 = () => {
-    if (!isStep1Valid) return;
+    if (!isStep1Valid) {
+      if (!isPhoneValid) {
+        setError('Business contact phone number is required (minimum 10 digits).');
+      } else {
+        setError('Please complete all required fields before continuing.');
+      }
+      return;
+    }
     setError(null);
     setStep(2);
   };
@@ -697,18 +706,24 @@ export const OnboardingWizardPage: React.FC = () => {
               </select>
             </div>
 
-            {/* Phone (Optional) */}
+            {/* Business Contact Phone (Required) */}
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-slate-700">
-                Business Contact Phone <span className="text-slate-400 font-normal">(Optional)</span>
+                Business Contact Phone <span className="text-red-500 font-bold">*</span>
               </label>
               <input
                 type="tel"
                 value={phone}
                 onChange={e => setPhone(e.target.value)}
                 placeholder="+91 98765 43210"
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:bg-white"
+                required
+                className={`w-full px-4 py-2.5 bg-slate-50 border rounded-xl text-xs font-medium text-slate-900 focus:bg-white ${
+                  phone.trim() && !isPhoneValid ? 'border-red-400 focus:border-red-500' : 'border-slate-200 focus:border-blue-500'
+                }`}
               />
+              {phone.trim() && !isPhoneValid && (
+                <p className="text-[11px] text-red-600 font-medium">Please enter a valid 10-digit mobile or phone number.</p>
+              )}
             </div>
 
             {/* Business Email (Optional) */}

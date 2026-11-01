@@ -477,19 +477,51 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     });
   }
 
-  // Save / Update Business
-  if (url.pathname === '/api/businesses' && request.method === 'POST') {
+  // Single Business GET (/api/business or /api/businesses/:id)
+  const singleBizMatch = url.pathname.match(/^\/api\/businesses\/([^/]+)$/);
+  if ((url.pathname === '/api/business' || singleBizMatch) && request.method === 'GET') {
+    const ownerUid = request.headers.get('x-user-uid') || 'default';
+    const bizId = singleBizMatch ? singleBizMatch[1] : (url.searchParams.get('businessId') || `biz_${ownerUid}`);
+    const bizData = {
+      id: bizId,
+      ownerUid,
+      businessName: 'spiral katta',
+      category: 'cafe_bistro',
+      description: '',
+      city: 'Pune',
+      state: 'Maharashtra',
+      country: 'India',
+      primaryLanguage: 'en',
+      googleReviewUrl: '',
+      onboardingStatus: 'NOT_STARTED',
+      onboardingCompleted: false
+    };
+    return jsonResponse({
+      business: bizData,
+      ...bizData
+    });
+  }
+
+  // Save / Update Business (POST/PUT on /api/business, /api/businesses, /api/businesses/:id)
+  if (
+    (url.pathname === '/api/business' || url.pathname === '/api/businesses' || singleBizMatch) &&
+    (request.method === 'POST' || request.method === 'PUT')
+  ) {
     try {
       const body: any = await request.json().catch(() => ({}));
       const ownerUid = request.headers.get('x-user-uid') || body.ownerUid || `user_${Date.now()}`;
-      const businessId = body.id || `biz_${ownerUid}`;
+      const businessId = singleBizMatch
+        ? singleBizMatch[1]
+        : (url.searchParams.get('businessId') || body.id || `biz_${ownerUid}`);
+      const savedBusiness = {
+        ...body,
+        id: businessId,
+        ownerUid,
+        updatedAt: new Date().toISOString()
+      };
       return jsonResponse({
-        business: {
-          ...body,
-          id: businessId,
-          ownerUid,
-          updatedAt: new Date().toISOString()
-        },
+        business: savedBusiness,
+        id: businessId,
         message: 'Business profile saved successfully.'
       });
     } catch (e: any) {
@@ -536,42 +568,22 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     });
   }
 
-  // Single Business GET /api/businesses/:id
-  const bizMatch = url.pathname.match(/^\/api\/businesses\/([^/]+)$/);
-  if (bizMatch && request.method === 'GET') {
-    const bizId = bizMatch[1];
-    const ownerUid = request.headers.get('x-user-uid') || bizId.replace('biz_', '');
-    return jsonResponse({
-      id: bizId,
-      ownerUid,
-      businessName: 'My Business Workspace',
-      category: 'Retail & Store',
-      description: '',
-      city: 'Pune',
-      state: 'Maharashtra',
-      country: 'India',
-      primaryLanguage: 'en',
-      googleReviewUrl: '',
-      onboardingStatus: 'NOT_STARTED',
-      onboardingCompleted: false
-    });
-  }
-
-  // Topics GET/POST /api/businesses/:id/topics
+  // Topics GET/POST/PUT /api/businesses/:id/topics
   const topicsMatch = url.pathname.match(/^\/api\/businesses\/([^/]+)\/topics$/);
   if (topicsMatch) {
     if (request.method === 'GET') {
       return jsonResponse({
+        success: true,
         topics: [
-          { id: 'top_1', topic: 'Customer Service & Hospitality', description: 'Polite and attentive staff assistance' },
-          { id: 'top_2', topic: 'Product Quality & Variety', description: 'Premium selection and fresh inventory' },
-          { id: 'top_3', topic: 'Cleanliness & Atmosphere', description: 'Hygienic, welcoming, and organized environment' },
-          { id: 'top_4', topic: 'Value for Money & Pricing', description: 'Transparent, fair pricing and discounts' },
-          { id: 'top_5', topic: 'Speed of Service & Billing', description: 'Quick checkout and hassle-free payments' }
+          { id: 'top_1', title: 'Customer Service & Hospitality', topic: 'Customer Service & Hospitality', description: 'Polite and attentive staff assistance', sortOrder: 1 },
+          { id: 'top_2', title: 'Product Quality & Variety', topic: 'Product Quality & Variety', description: 'Premium selection and fresh inventory', sortOrder: 2 },
+          { id: 'top_3', title: 'Cleanliness & Atmosphere', topic: 'Cleanliness & Atmosphere', description: 'Hygienic, welcoming, and organized environment', sortOrder: 3 },
+          { id: 'top_4', title: 'Value for Money & Pricing', topic: 'Value for Money & Pricing', description: 'Transparent, fair pricing and discounts', sortOrder: 4 },
+          { id: 'top_5', title: 'Speed of Service & Billing', topic: 'Speed of Service & Billing', description: 'Quick checkout and hassle-free payments', sortOrder: 5 }
         ]
       });
     }
-    if (request.method === 'POST') {
+    if (request.method === 'POST' || request.method === 'PUT') {
       const body: any = await request.json().catch(() => ({}));
       return jsonResponse({
         success: true,
@@ -585,12 +597,13 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   const genTopicsMatch = url.pathname.match(/^\/api\/businesses\/([^/]+)\/generate-topics$/);
   if (genTopicsMatch && request.method === 'POST') {
     return jsonResponse({
+      success: true,
       topics: [
-        { id: 'top_1', topic: 'Customer Service & Hospitality', description: 'Polite and attentive staff assistance' },
-        { id: 'top_2', topic: 'Product Quality & Variety', description: 'Premium selection and fresh inventory' },
-        { id: 'top_3', topic: 'Cleanliness & Atmosphere', description: 'Hygienic, welcoming, and organized environment' },
-        { id: 'top_4', topic: 'Value for Money & Pricing', description: 'Transparent, fair pricing and discounts' },
-        { id: 'top_5', topic: 'Speed of Service & Billing', description: 'Quick checkout and hassle-free payments' }
+        { id: 'top_1', title: 'Customer Service & Hospitality', topic: 'Customer Service & Hospitality', description: 'Polite, prompt, and courteous assistance', sortOrder: 1 },
+        { id: 'top_2', title: 'Product Quality & Taste', topic: 'Product Quality & Taste', description: 'Consistently delicious food and fresh ingredients', sortOrder: 2 },
+        { id: 'top_3', title: 'Cleanliness & Ambience', topic: 'Cleanliness & Ambience', description: 'Clean, comfortable, and family-friendly seating atmosphere', sortOrder: 3 },
+        { id: 'top_4', title: 'Value for Money', topic: 'Value for Money', description: 'Fair portion sizes and reasonable prices', sortOrder: 4 },
+        { id: 'top_5', title: 'Quick Service & Takeaway', topic: 'Quick Service & Takeaway', description: 'Short wait times and neat packaging', sortOrder: 5 }
       ]
     });
   }
