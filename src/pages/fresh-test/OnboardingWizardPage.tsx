@@ -22,13 +22,22 @@ import {
   Radio,
   Clock,
   ShieldCheck,
-  AlertTriangle
+  AlertTriangle,
+  Download,
+  Copy,
+  Printer
 } from 'lucide-react';
 import { freshTestApi, BusinessData } from '../../lib/fresh-test-api.ts';
 import { MAIN_CATEGORIES, findCategoryById } from '../../lib/business-taxonomy.ts';
 import { useAuth } from '../../lib/auth-context.tsx';
 import { useBusiness } from '../../lib/business-context.tsx';
-import { syncBusinessToFirestore, syncQrCodeToFirestore } from '../../lib/firestore-sync.ts';
+import { syncBusinessToFirestore, syncQrCodeToFirestore, syncPublicQrConfigToFirestore } from '../../lib/firestore-sync.ts';
+import {
+  generateQrPngDataUrl,
+  downloadUltraHdPng,
+  downloadVectorSvg,
+  generatePrintPdf
+} from '../../lib/qr-generator.ts';
 import { LogoUploader } from '../../components/common/LogoUploader.tsx';
 
 interface TopicItem {
@@ -84,6 +93,23 @@ export const OnboardingWizardPage: React.FC = () => {
   // STEP 4 Form State: Dynamic QR & NFC
   const [businessCode, setBusinessCode] = useState('');
   const [primaryQr, setPrimaryQr] = useState<any>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const [copiedLink, setCopiedLink] = useState<boolean>(false);
+  const [copiedNfc, setCopiedNfc] = useState<boolean>(false);
+  const [downloading, setDownloading] = useState<string | null>(null);
+
+  const canonicalOrigin = typeof window !== 'undefined' && window.location.origin.includes('localhost')
+    ? 'https://qorbiqai.com'
+    : (typeof window !== 'undefined' ? window.location.origin : 'https://qorbiqai.com');
+  const dynamicQrUrl = businessCode ? `${canonicalOrigin}/r/${businessCode}` : '';
+
+  useEffect(() => {
+    if (dynamicQrUrl) {
+      generateQrPngDataUrl(dynamicQrUrl, { width: 800, margin: 2 })
+        .then(url => setQrDataUrl(url))
+        .catch(err => console.error('[QR Generation] Failed:', err));
+    }
+  }, [dynamicQrUrl]);
 
   // Meaningless keyword list to reject
   const meaninglessWords = ['test', 'abc', 'business', '123', 'hello', 'demo', 'xyz', 'none', 'na', 'n/a', 'shop', 'sample'];
@@ -210,8 +236,9 @@ export const OnboardingWizardPage: React.FC = () => {
       }
 
       // If business already has code / QR
-      if (b.uniqueCode) {
-        setBusinessCode(b.uniqueCode);
+      const codeFromBiz = (b as any).uniqueQrCode || b.uniqueCode || (b.ownerUid ? `code_${b.ownerUid.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8)}` : (bizIdToUse ? `code_${bizIdToUse.replace('biz_', '').substring(0, 8)}` : ''));
+      if (codeFromBiz) {
+        setBusinessCode(codeFromBiz);
       }
 
       // If topics exist in DB already, load them
@@ -408,19 +435,69 @@ export const OnboardingWizardPage: React.FC = () => {
         console.warn('[Onboarding] QR fetch fallback:', qrErr);
       }
 
+      const stableCode = businessCode || currentQr?.uniqueCode || `code_${currentBusinessId.replace('biz_', '').substring(0, 8)}`;
+      setBusinessCode(stableCode);
+
       if (!currentQr) {
         currentQr = {
           id: `qr_${currentBusinessId}`,
           businessId: currentBusinessId,
-          uniqueCode: currentBusinessId.replace('biz_', '').substring(0, 10),
+          uniqueCode: stableCode,
           destinationUrl: googleReviewUrl || 'https://search.google.com/local/writereview',
           status: 'ACTIVE'
         };
+      } else {
+        currentQr.uniqueCode = stableCode;
       }
 
       setPrimaryQr(currentQr);
-      if (currentQr?.uniqueCode) {
-        setBusinessCode(currentQr.uniqueCode);
+
+      // Persist permanently in Firestore (Section 1 & 6)
+      if (user?.uid) {
+        const canonical = window.location.origin.includes('localhost') ? 'https://qorbiqai.com' : window.location.origin;
+        const dynamicUrl = `${canonical}/r/${stableCode}`;
+
+        await syncBusinessToFirestore({
+          id: currentBusinessId,
+          ownerUid: user.uid,
+          businessName: businessName.trim(),
+          category,
+          subcategory,
+          description: description.trim(),
+          city: city.trim(),
+          state: stateName.trim(),
+          country: country.trim(),
+          primaryLanguage,
+          googleReviewUrl: googleReviewUrl.trim(),
+          uniqueQrCode: stableCode,
+          dynamicQrUrl: dynamicUrl,
+          qrStatus: 'ACTIVE',
+          nfcStatus: 'ACTIVE',
+          scanCount: 0,
+          onboardingStatus: 'IN_PROGRESS',
+          onboardingCompleted: false
+        });
+
+        await syncPublicQrConfigToFirestore({
+          uniqueCode: stableCode,
+          businessId: currentBusinessId,
+          ownerUid: user.uid,
+          businessName: businessName.trim(),
+          googleReviewUrl: googleReviewUrl.trim(),
+          dynamicUrl: dynamicUrl,
+          status: 'ACTIVE',
+          nfcStatus: 'ACTIVE'
+        });
+
+        await syncQrCodeToFirestore({
+          id: currentQr.id || `qr_${currentBusinessId}`,
+          businessId: currentBusinessId,
+          ownerUid: user.uid,
+          uniqueCode: stableCode,
+          destinationUrl: googleReviewUrl.trim(),
+          status: 'ACTIVE',
+          scansCount: 0
+        });
       }
 
       setStep(4);
@@ -447,7 +524,10 @@ export const OnboardingWizardPage: React.FC = () => {
 
       // Sync Firestore completed state
       if (user?.uid) {
-        syncBusinessToFirestore({
+        const canonical = window.location.origin.includes('localhost') ? 'https://qorbiqai.com' : window.location.origin;
+        const dynamicUrl = `${canonical}/r/${businessCode}`;
+
+        await syncBusinessToFirestore({
           id: currentBusinessId,
           ownerUid: user.uid,
           businessName: businessName,
@@ -459,11 +539,37 @@ export const OnboardingWizardPage: React.FC = () => {
           country: country,
           primaryLanguage: primaryLanguage,
           googleReviewUrl: googleReviewUrl,
+          uniqueQrCode: businessCode,
+          dynamicQrUrl: dynamicUrl,
+          qrStatus: 'ACTIVE',
+          nfcStatus: 'ACTIVE',
+          scanCount: 0,
           onboardingStatus: 'COMPLETED',
           onboardingCompleted: true,
           onboardingCompletedAt: new Date().toISOString(),
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
+        });
+
+        await syncPublicQrConfigToFirestore({
+          uniqueCode: businessCode,
+          businessId: currentBusinessId,
+          ownerUid: user.uid,
+          businessName: businessName,
+          googleReviewUrl: googleReviewUrl.trim(),
+          dynamicUrl: dynamicUrl,
+          status: 'ACTIVE',
+          nfcStatus: 'ACTIVE'
+        });
+
+        await syncQrCodeToFirestore({
+          id: primaryQr?.id || `qr_${currentBusinessId}`,
+          businessId: currentBusinessId,
+          ownerUid: user.uid,
+          uniqueCode: businessCode,
+          destinationUrl: googleReviewUrl.trim(),
+          status: 'ACTIVE',
+          scansCount: 0
         });
       }
 
@@ -1039,59 +1145,214 @@ export const OnboardingWizardPage: React.FC = () => {
       {/* STEP 4: DYNAMIC QR & NFC SETUP */}
       {step === 4 && (
         <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-xs space-y-6">
-          <div className="border-b border-slate-100 pb-4">
-            <h2 className="text-lg font-bold text-slate-900">Step 4 — Dynamic QR & NFC Setup</h2>
-            <p className="text-xs text-slate-500 mt-1">
-              Your business receives exactly one primary dynamic QR code and one primary NFC card assignment.
-            </p>
+          <div className="border-b border-slate-100 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">Step 4 — Dynamic QR & NFC Stand Provisioning</h2>
+              <p className="text-xs text-slate-500 mt-1">
+                Your business is assigned a permanent, trackable shortlink. Point any smartphone camera at this preview to test live scanning.
+              </p>
+            </div>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[11px] font-bold self-start sm:self-center">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              Live & Scannable
+            </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-center">
-            {/* Dynamic Route Info */}
-            <div className="space-y-4">
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
-                  Permanent Public Dynamic Route
-                </span>
-                <div className="font-mono text-xs font-bold text-blue-700 bg-white p-2.5 rounded-xl border border-slate-200 truncate flex items-center justify-between">
-                  <span>{`${window.location.origin}/r/${businessCode || 'loading'}`}</span>
-                  <ExternalLink
-                    className="w-3.5 h-3.5 cursor-pointer text-slate-400 hover:text-blue-600 shrink-0 ml-1"
-                    onClick={() => window.open(`/r/${businessCode}`, '_blank')}
-                  />
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            {/* Left Column: Link configuration & Download Actions */}
+            <div className="lg:col-span-7 space-y-5">
+              {/* Dynamic URL card */}
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                    Permanent Dynamic Shortlink
+                  </span>
+                  <span className="text-[10px] text-emerald-600 font-semibold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                    Never Changes on Google URL Update
+                  </span>
+                </div>
+                <div className="font-mono text-xs font-bold text-blue-700 bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between gap-2">
+                  <span className="truncate">{dynamicQrUrl || `${canonicalOrigin}/r/${businessCode || 'loading'}`}</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      title="Copy Dynamic URL"
+                      onClick={async () => {
+                        if (dynamicQrUrl) {
+                          await navigator.clipboard.writeText(dynamicQrUrl);
+                          setCopiedLink(true);
+                          setTimeout(() => setCopiedLink(false), 2000);
+                        }
+                      }}
+                      className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-slate-50 rounded-lg border border-slate-200 cursor-pointer transition-colors"
+                    >
+                      {copiedLink ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                    <button
+                      type="button"
+                      title="Test Live Scan in New Tab"
+                      onClick={() => window.open(dynamicQrUrl, '_blank', 'noopener,noreferrer')}
+                      className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-slate-50 rounded-lg border border-slate-200 cursor-pointer transition-colors"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
                 <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Neither the NFC card nor the physical QR stand store Google's raw URL. If you change your Google link later, physical hardware never needs reprogramming.
+                  Both your physical counter stands and NFC tap cards encode this exact URL. If your Google link changes in the future, you update it in your dashboard without reprinting hardware.
                 </p>
               </div>
 
-              <div className="space-y-2 text-xs text-slate-700">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>Primary NFC Card assigned & provisioned</span>
+              {/* Destination URL card */}
+              <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-2xl space-y-2">
+                <span className="text-[10px] uppercase font-bold text-blue-600 tracking-wider block">
+                  Current Target Destination (Google Reviews)
+                </span>
+                <div className="text-xs font-mono text-slate-700 truncate bg-white p-2.5 rounded-xl border border-blue-100">
+                  {googleReviewUrl || 'Not configured'}
                 </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>Dynamic QR Code linked to /r/{businessCode}</span>
+              </div>
+
+              {/* NFC Card & Tag Support */}
+              <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-indigo-950 font-bold text-xs">
+                    <Radio className="w-4 h-4 text-indigo-600" />
+                    <span>NFC Smart Card & Tap Stand</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (dynamicQrUrl) {
+                        await navigator.clipboard.writeText(dynamicQrUrl);
+                        setCopiedNfc(true);
+                        setTimeout(() => setCopiedNfc(false), 2000);
+                      }
+                    }}
+                    className="text-[11px] font-bold text-indigo-700 bg-white border border-indigo-200 px-2.5 py-1 rounded-lg hover:bg-indigo-50 flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    {copiedNfc ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedNfc ? 'Link Copied!' : 'Copy NFC Link'}</span>
+                  </button>
                 </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>Scan tracking & analytics isolated to this business</span>
+                <p className="text-[11px] text-indigo-900/80 leading-relaxed">
+                  NFC cards use this exact same link. Open "NFC Tools" (free on iOS & Android), choose <strong>Write &gt; Add a record &gt; Custom URL</strong>, paste this link, and tap your NFC card or sticker.
+                </p>
+              </div>
+
+              {/* Download Assets Toolbar */}
+              <div className="space-y-2">
+                <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">
+                  Export Print Assets
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <button
+                    type="button"
+                    disabled={Boolean(downloading) || !dynamicQrUrl}
+                    onClick={async () => {
+                      try {
+                        setDownloading('png');
+                        await downloadUltraHdPng(dynamicQrUrl, `${businessName.replace(/[^a-zA-Z0-9]/g, '_')}_QR_UltraHD.png`);
+                      } finally {
+                        setDownloading(null);
+                      }
+                    }}
+                    className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl border border-slate-200 flex items-center justify-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50"
+                  >
+                    <Download className="w-3.5 h-3.5 text-slate-600" />
+                    <span>{downloading === 'png' ? 'Exporting...' : 'PNG (3000px)'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={Boolean(downloading) || !dynamicQrUrl}
+                    onClick={async () => {
+                      try {
+                        setDownloading('svg');
+                        await downloadVectorSvg(dynamicQrUrl, `${businessName.replace(/[^a-zA-Z0-9]/g, '_')}_QR_Vector.svg`);
+                      } finally {
+                        setDownloading(null);
+                      }
+                    }}
+                    className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl border border-slate-200 flex items-center justify-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50"
+                  >
+                    <Download className="w-3.5 h-3.5 text-slate-600" />
+                    <span>{downloading === 'svg' ? 'Exporting...' : 'Vector SVG'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={Boolean(downloading) || !dynamicQrUrl}
+                    onClick={async () => {
+                      try {
+                        setDownloading('pdf');
+                        await generatePrintPdf({
+                          businessName: businessName || 'Our Business',
+                          qrCodeUrl: dynamicQrUrl,
+                          templateType: 'counter_stand',
+                          placementName: 'Counter Stand'
+                        });
+                      } finally {
+                        setDownloading(null);
+                      }
+                    }}
+                    className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl border border-slate-200 flex items-center justify-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50"
+                  >
+                    <Printer className="w-3.5 h-3.5 text-slate-600" />
+                    <span>{downloading === 'pdf' ? 'Generating...' : 'Print PDF'}</span>
+                  </button>
                 </div>
               </div>
             </div>
 
-            {/* Stand Preview Visual */}
-            <div className="bg-slate-50 rounded-2xl border border-slate-200 p-6 flex flex-col items-center justify-center text-center space-y-3">
-              <div className="w-36 h-36 bg-white rounded-2xl shadow-sm border border-slate-200 flex items-center justify-center p-3">
-                <QrCode className="w-28 h-28 text-slate-900" />
+            {/* Right Column: Physical Stand Preview with Live Scannable QR */}
+            <div className="lg:col-span-5 flex flex-col items-center">
+              <div className="w-full max-w-xs bg-slate-900 text-white rounded-3xl p-6 shadow-xl border border-slate-800 flex flex-col items-center text-center relative overflow-hidden">
+                {/* Stand Header */}
+                <div className="text-[10px] tracking-widest uppercase font-bold text-slate-400 mb-1">
+                  Leave Us A Review
+                </div>
+                <div className="font-bold text-base text-white truncate max-w-[240px] mb-4">
+                  {businessName || 'Your Business'}
+                </div>
+
+                {/* Scannable QR Code */}
+                <div className="w-44 h-44 bg-white rounded-2xl p-2.5 shadow-md flex items-center justify-center mb-4">
+                  {qrDataUrl ? (
+                    <img
+                      src={qrDataUrl}
+                      alt={`Scannable QR code for ${businessName}`}
+                      className="w-full h-full object-contain rounded-lg"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center text-slate-400 gap-2">
+                      <RefreshCw className="w-6 h-6 animate-spin text-blue-500" />
+                      <span className="text-[10px]">Generating QR...</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* NFC Tap Indicator */}
+                <div className="flex items-center gap-1.5 text-xs font-bold text-sky-400 mb-2">
+                  <Radio className="w-4 h-4" />
+                  <span>Tap NFC or Scan with Camera</span>
+                </div>
+
+                <div className="text-[10px] text-slate-400 font-mono truncate max-w-[220px]">
+                  /r/{businessCode}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => window.open(dynamicQrUrl, '_blank', 'noopener,noreferrer')}
+                  className="mt-4 w-full py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-xl border border-white/20 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Test Scan in Browser</span>
+                </button>
               </div>
-              <div>
-                <span className="font-bold text-xs text-slate-900 block">{businessName}</span>
-                <span className="text-[10px] text-slate-500 block">Tap NFC or Scan QR</span>
-              </div>
-              <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[10px] font-bold">
-                Stand Active & Ready
+              <span className="text-[11px] text-slate-400 mt-3 text-center">
+                Point your phone's camera at this preview to verify redirection
               </span>
             </div>
           </div>
@@ -1144,6 +1405,32 @@ export const OnboardingWizardPage: React.FC = () => {
                 </div>
               </div>
             ))}
+          </div>
+
+          {/* Final Stand Summary Card */}
+          <div className="p-4 bg-slate-900 text-white rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-14 h-14 bg-white rounded-xl p-1 shrink-0 flex items-center justify-center">
+                {qrDataUrl ? (
+                  <img src={qrDataUrl} alt="QR" className="w-full h-full object-contain" />
+                ) : (
+                  <QrCode className="w-8 h-8 text-slate-900" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <div className="font-bold text-xs text-white truncate">{businessName}</div>
+                <div className="text-[11px] font-mono text-sky-400 truncate">{dynamicQrUrl || `/r/${businessCode}`}</div>
+                <div className="text-[10px] text-slate-400">Hardware & NFC Dynamic Link Ready</div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => window.open(dynamicQrUrl, '_blank', 'noopener,noreferrer')}
+              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-lg border border-white/20 flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>Test Live Standee</span>
+            </button>
           </div>
 
           <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl text-xs text-emerald-900 flex items-center gap-3">

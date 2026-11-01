@@ -89,9 +89,7 @@ service cloud.firestore {
     // 3. QR CODES COLLECTION
     // =========================================================
     match /qr_codes/{qrCodeId} {
-      allow read: if isAuthenticated() && (
-        resource.data.ownerUid == request.auth.uid || isSuperAdmin()
-      );
+      allow read: if true; // Public for QR scanner resolution
       allow create: if isSuperAdmin() || (
         isAuthenticated() && request.resource.data.ownerUid == request.auth.uid
       );
@@ -109,7 +107,13 @@ service cloud.firestore {
     // =========================================================
     match /public_qr_configs/{uniqueCode} {
       allow read: if true;
-      allow write: if false; // Cloud Functions / Server backend only
+      allow create, update: if isSuperAdmin() || (
+        isAuthenticated() && (
+          request.resource.data.ownerUid == request.auth.uid ||
+          request.resource.data.ownerId == request.auth.uid
+        )
+      );
+      allow delete: if isSuperAdmin();
     }
 
     match /experience_topics/{topicId} {
@@ -119,11 +123,18 @@ service cloud.firestore {
 
     // =========================================================
     // 5. QR SCAN EVENTS & SESSIONS
-    // Client-side writes forbidden to prevent telemetry tampering
+    // Recorded automatically during scan redirection
     // =========================================================
+    match /qr_scan_events/{eventId} {
+      allow read: if isAuthenticated();
+      allow create: if true; // Public scanners / edge worker logging scans
+      allow update, delete: if isSuperAdmin();
+    }
+
     match /qr_events/{eventId} {
       allow read: if isAuthenticated();
-      allow write: if false; // Recorded strictly via backend API
+      allow create: if true;
+      allow update, delete: if isSuperAdmin();
     }
 
     match /review_assistance_events/{eventId} {

@@ -41,6 +41,12 @@ export interface FirestoreBusinessRecord {
   primaryLanguage: string;
   googleReviewUrl: string;
   googleReviewVerified?: boolean;
+  uniqueQrCode?: string;
+  dynamicQrUrl?: string;
+  qrStatus?: 'ACTIVE' | 'PAUSED' | 'DISABLED';
+  nfcStatus?: 'ACTIVE' | 'DISABLED';
+  scanCount?: number;
+  lastScannedAt?: any;
   logoUrl?: string;
   onboardingStatus: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
   onboardingCompleted: boolean;
@@ -131,8 +137,50 @@ export async function syncBusinessToFirestore(business: Partial<FirestoreBusines
       createdAt: business.createdAt || serverTimestamp()
     });
     await setDoc(bizRef, cleaned, { merge: true });
+
+    // Also sync public QR config if uniqueQrCode or googleReviewUrl is present
+    const uniqueCode = business.uniqueQrCode || `code_${business.ownerUid.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8)}`;
+    if (uniqueCode && (business.googleReviewUrl || business.businessName)) {
+      await syncPublicQrConfigToFirestore({
+        uniqueCode,
+        businessId,
+        ownerUid: business.ownerUid,
+        businessName: business.businessName || '',
+        googleReviewUrl: business.googleReviewUrl || '',
+        dynamicUrl: business.dynamicQrUrl || `https://qorbiqai.com/r/${uniqueCode}`,
+        status: (business.qrStatus as any) || 'ACTIVE',
+        nfcStatus: (business.nfcStatus as any) || 'ACTIVE'
+      });
+    }
   } catch (err: any) {
     console.warn('[FirestoreSync] Failed to sync business:', err.message);
+  }
+}
+
+/**
+ * Save public QR routing configuration to Firestore for unauthenticated edge redirects
+ */
+export async function syncPublicQrConfigToFirestore(config: {
+  uniqueCode: string;
+  businessId: string;
+  ownerUid: string;
+  businessName: string;
+  googleReviewUrl: string;
+  dynamicUrl: string;
+  status: 'ACTIVE' | 'PAUSED' | 'DISABLED';
+  nfcStatus?: 'ACTIVE' | 'DISABLED';
+}) {
+  if (!db) return;
+  try {
+    const configRef = doc(db, 'public_qr_configs', config.uniqueCode);
+    const cleaned = stripUndefined({
+      ...config,
+      updatedAt: serverTimestamp(),
+      createdAt: serverTimestamp()
+    });
+    await setDoc(configRef, cleaned, { merge: true });
+  } catch (err: any) {
+    console.warn('[FirestoreSync] Failed to sync public QR config:', err.message);
   }
 }
 
