@@ -289,15 +289,24 @@ export const SuperAdminInvoicesPage: React.FC = () => {
                           <Eye className="w-4 h-4" />
                         </button>
 
-                        <a
-                          href={`/api/admin/invoices/${inv.id}/pdf`}
-                          target="_blank"
-                          rel="noreferrer"
-                          title="Print / PDF Invoice"
-                          className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
-                        >
-                          <Printer className="w-4 h-4" />
-                        </a>
+                        {inv.status === 'PAID' ? (
+                          <a
+                            href={`/api/admin/invoices/${inv.id}/pdf?download=1`}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Download Verified PDF Tax Invoice"
+                            className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Download className="w-4 h-4 text-emerald-600" />
+                          </a>
+                        ) : (
+                          <span
+                            title="PDF Invoices strictly downloadable only for verified PAID transactions"
+                            className="p-1.5 text-slate-300 cursor-not-allowed opacity-50"
+                          >
+                            <Download className="w-4 h-4" />
+                          </span>
+                        )}
 
                         {inv.status === 'PAID' && (
                           <button
@@ -335,15 +344,24 @@ export const SuperAdminInvoicesPage: React.FC = () => {
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <a
-                  href={`/api/admin/invoices/${selectedInvoice.id}/pdf`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>Print / Download PDF</span>
-                </a>
+                {selectedInvoice.status === 'PAID' ? (
+                  <a
+                    href={`/api/admin/invoices/${selectedInvoice.id}/pdf?download=1`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download PDF Invoice</span>
+                  </a>
+                ) : (
+                  <span
+                    className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-400 text-xs font-semibold flex items-center gap-1.5 cursor-not-allowed opacity-60"
+                    title="PDF downloads available only after payment verification"
+                  >
+                    <span>Unverified Payment</span>
+                  </span>
+                )}
                 <button
                   onClick={() => setSelectedInvoice(null)}
                   className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"

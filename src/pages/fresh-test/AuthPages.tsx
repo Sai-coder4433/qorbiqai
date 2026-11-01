@@ -28,9 +28,10 @@ export const LoginPage: React.FC = () => {
   const location = useLocation();
   const { loginWithEmail, user, logout } = useAuth();
 
-  const redirectUrl = new URLSearchParams(location.search).get('redirect') || '/app/dashboard';
+  const searchParams = new URLSearchParams(location.search);
+  const redirectUrl = searchParams.get('redirect') || '/app/dashboard';
 
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(searchParams.get('email') || '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -187,7 +188,7 @@ export const LoginPage: React.FC = () => {
 // ========================================================
 export const SignupPage: React.FC = () => {
   const navigate = useNavigate();
-  const { signupWithEmail, user } = useAuth();
+  const { signupWithEmail, loginWithEmail, user } = useAuth();
 
   const [name, setName] = useState('');
   const [businessName, setBusinessName] = useState('');
@@ -245,7 +246,24 @@ export const SignupPage: React.FC = () => {
       );
       navigate('/onboarding', { replace: true });
     } catch (err: any) {
-      setErrorMessage(err.message || 'Signup failed. Please try again.');
+      const msg = err?.message || '';
+      if (
+        msg.toLowerCase().includes('already exists') ||
+        msg.toLowerCase().includes('email-already-in-use')
+      ) {
+        // Seamlessly auto-login existing user with provided credentials
+        try {
+          await loginWithEmail(email.trim(), password);
+          navigate('/onboarding', { replace: true });
+          return;
+        } catch {
+          setErrorMessage(
+            'An account with this email address already exists. Please Sign In below or use Forgot Password.'
+          );
+          return;
+        }
+      }
+      setErrorMessage(msg || 'Signup failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -284,9 +302,22 @@ export const SignupPage: React.FC = () => {
           </div>
 
           {errorMessage && (
-            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-              <span>{errorMessage}</span>
+            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-700 space-y-2">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                <span>{errorMessage}</span>
+              </div>
+              {errorMessage.toLowerCase().includes('already exists') && (
+                <div className="pt-1">
+                  <Link
+                    to={`/login?email=${encodeURIComponent(email.trim())}`}
+                    className="inline-flex items-center gap-1.5 font-bold text-blue-600 hover:text-blue-800 hover:underline bg-white px-3 py-1.5 rounded-lg border border-blue-200 shadow-xs"
+                  >
+                    <span>Sign In to Existing Account</span>
+                    &rarr;
+                  </Link>
+                </div>
+              )}
             </div>
           )}
 

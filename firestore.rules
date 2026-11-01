@@ -44,7 +44,9 @@ service cloud.firestore {
       // Super Admin or client creating their own initial profile
       allow create: if isSuperAdmin() || (
         isAuthenticated() && request.auth.uid == userId && (
-          !('role' in request.resource.data) || request.resource.data.role == 'BUSINESS_OWNER'
+          !('role' in request.resource.data) || 
+          request.resource.data.role == 'BUSINESS_OWNER' ||
+          request.resource.data.role == 'CLIENT'
         )
       );
       // Clients cannot modify their own role, status, or subscription from client-side

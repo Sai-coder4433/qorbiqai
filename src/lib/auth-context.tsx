@@ -12,7 +12,7 @@ import {
 import { auth, googleAuthProvider, isFirebaseConfigured } from './firebase.ts';
 import { fetchApi } from './api.ts';
 import { freshTestApi } from './fresh-test-api.ts';
-import { syncUserProfileToFirestore } from './firestore-sync.ts';
+import { syncUserProfileToFirestore, syncBusinessToFirestore } from './firestore-sync.ts';
 
 export type UserRole =
   | 'SUPER_ADMIN'
@@ -156,7 +156,15 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const stored = localStorage.getItem('saas_auth_user');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
   const [organization, setOrganization] = useState<OrganizationInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -255,10 +263,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return synced;
       } catch (fbErr: any) {
         const formatted = formatFirebaseAuthError(fbErr);
-        // If it's a network error or Firebase config pending in console, try server auth
+        // Fallback to server login ONLY if Firebase had network connectivity failure or configuration is pending
         if (fbErr?.code === 'auth/network-request-failed' || fbErr?.code === 'auth/configuration-not-found') {
           try {
-            const res = await freshTestApi.clientLogin({ email, password: pass });
+            const res = await freshTestApi.clientLogin({ email: email.trim(), password: pass });
             if (res && res.user) {
               const hasCompleted = res.user.onboardingStatus === 'COMPLETED' || Boolean(res.business?.onboardingCompleted);
               const authUser: AuthUser = {
@@ -280,7 +288,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               return authUser;
             }
           } catch {
-            // Keep original formatted Firebase error
+            // Fall through to throw original formatted Firebase error
           }
         }
         setError(formatted);
@@ -329,35 +337,105 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ) => {
     setError(null);
 
-    // Primary: Firebase Auth user creation (Section 7)
+    let firebaseUid: string | undefined;
+
+    // 1. Attempt Firebase Auth user creation or sign-in if configured
     if (auth && isFirebaseConfigured) {
       try {
-        const cred = await createUserWithEmailAndPassword(auth, email, pass);
-        // Send email verification
+        let cred: any;
         try {
-          await sendEmailVerification(cred.user);
-        } catch {
-          // ignore verification send fail
+          cred = await createUserWithEmailAndPassword(auth, email.trim(), pass);
+          try {
+            await sendEmailVerification(cred.user);
+          } catch {
+            // ignore verification send fail
+          }
+        } catch (createErr: any) {
+          if (createErr?.code === 'auth/email-already-in-use') {
+            try {
+              cred = await signInWithEmailAndPassword(auth, email.trim(), pass);
+            } catch {
+              // Firebase has email with different password; continue with authoritative server update
+            }
+          } else if (createErr?.code === 'auth/weak-password') {
+            throw new Error('Password must be at least 6 characters long.');
+          } else if (createErr?.code === 'auth/invalid-email') {
+            throw new Error('Please enter a valid email address.');
+          } else {
+            console.warn('[Auth] Firebase signup notice:', createErr?.message);
+          }
         }
+        if (cred?.user?.uid) {
+          firebaseUid = cred.user.uid;
+        }
+      } catch (fbErr: any) {
+        if (fbErr.message?.includes('Password') || fbErr.message?.includes('email address')) {
+          setError(fbErr.message);
+          throw fbErr;
+        }
+        console.warn('[Auth] Firebase signup notice:', fbErr?.message);
+      }
+    }
 
-        // Register client profile safely with Firebase UID (Section 7, 8: NO BUSINESS CREATED)
-        await freshTestApi.clientSignup({
-          uid: cred.user.uid,
-          email,
-          password: pass,
-          name,
-          businessName,
-          phone,
-          termsAccepted: true,
-          emailVerified: false
-        });
+    // 2. Authoritative server registration (always updates/creates and logs in)
+    try {
+      const res = await freshTestApi.clientSignup({
+        uid: firebaseUid,
+        email: email.trim().toLowerCase(),
+        password: pass,
+        name: name.trim(),
+        businessName: businessName?.trim(),
+        phone: phone?.trim(),
+        termsAccepted: termsAccepted ?? true,
+        emailVerified: false
+      });
 
+      if (res && res.user) {
         const authUser: AuthUser = {
-          uid: cred.user.uid,
-          email: cred.user.email,
+          uid: res.user.uid,
+          email: res.user.email,
+          displayName: res.user.displayName || name.trim(),
+          role: res.user.role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'CLIENT',
+          organizationId: 'org_' + res.user.uid,
+          status: res.user.status || 'active',
+          language: 'en',
+          timezone: 'UTC',
+          emailVerified: res.user.emailVerified ?? false,
+          onboardingStatus: res.user.onboardingStatus || 'NOT_STARTED',
+          onboardingCompletedAt: res.user.onboardingCompletedAt || null,
+          onboardingVersion: res.user.onboardingVersion || 1
+        };
+        setUser(authUser);
+        localStorage.setItem('saas_auth_user', JSON.stringify(authUser));
+        await syncUserProfileToFirestore(authUser);
+        if (businessName?.trim()) {
+          await syncBusinessToFirestore({
+            id: `biz_${authUser.uid}`,
+            ownerUid: authUser.uid,
+            businessName: businessName.trim(),
+            category: 'Retail & Store',
+            description: '',
+            city: '',
+            state: '',
+            country: 'India',
+            primaryLanguage: 'en',
+            googleReviewUrl: '',
+            onboardingStatus: 'NOT_STARTED',
+            onboardingCompleted: false
+          });
+        }
+        return;
+      }
+    } catch (serverErr: any) {
+      // If server registration fails but Firebase Auth user was created, finalize profile directly
+      if (firebaseUid) {
+        console.warn('[Auth] Server registration notice, continuing with Firebase authenticated user:', serverErr.message);
+        const authUser: AuthUser = {
+          uid: firebaseUid,
+          email: email.trim().toLowerCase(),
           displayName: name.trim(),
           role: 'CLIENT',
-          organizationId: 'org_' + cred.user.uid,
+          organizationId: 'org_' + firebaseUid,
           status: 'active',
           language: 'en',
           timezone: 'UTC',
@@ -368,84 +446,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
         setUser(authUser);
         localStorage.setItem('saas_auth_user', JSON.stringify(authUser));
-        return;
-      } catch (fbErr: any) {
-        if (fbErr?.code === 'auth/configuration-not-found' || fbErr?.code === 'auth/network-request-failed') {
-          try {
-            const res = await freshTestApi.clientSignup({
-              email,
-              password: pass,
-              name,
-              businessName,
-              phone,
-              termsAccepted: true,
-              emailVerified: false
-            });
-            if (res && res.user) {
-              const authUser: AuthUser = {
-                uid: res.user.uid,
-                email: res.user.email,
-                displayName: res.user.displayName,
-                role: 'CLIENT',
-                organizationId: 'org_' + res.user.uid,
-                status: 'active',
-                language: 'en',
-                timezone: 'UTC',
-                emailVerified: false,
-                onboardingStatus: 'NOT_STARTED',
-                onboardingCompletedAt: null,
-                onboardingVersion: 1
-              };
-              setUser(authUser);
-              localStorage.setItem('saas_auth_user', JSON.stringify(authUser));
-              return;
-            }
-          } catch (serverErr: any) {
-            const serverMsg = serverErr.message || 'Signup failed.';
-            setError(serverMsg);
-            throw new Error(serverMsg);
-          }
+        await syncUserProfileToFirestore(authUser);
+        if (businessName?.trim()) {
+          await syncBusinessToFirestore({
+            id: `biz_${firebaseUid}`,
+            ownerUid: firebaseUid,
+            businessName: businessName.trim(),
+            category: 'Retail & Store',
+            description: '',
+            city: '',
+            state: '',
+            country: 'India',
+            primaryLanguage: 'en',
+            googleReviewUrl: '',
+            onboardingStatus: 'NOT_STARTED',
+            onboardingCompleted: false
+          });
         }
-        const formatted = formatFirebaseAuthError(fbErr);
-        setError(formatted);
-        throw new Error(formatted);
+        return;
       }
+
+      const serverMsg = serverErr.message || 'Signup failed. Please try again.';
+      setError(serverMsg);
+      throw new Error(serverMsg);
     }
 
-    // Secondary / Server-backed signup
-    try {
-      const res = await freshTestApi.clientSignup({
-        email,
-        password: pass,
-        name,
-        businessName,
-        phone,
-        termsAccepted,
-        emailVerified: false
-      });
-      if (res && res.user) {
-        const authUser: AuthUser = {
-          uid: res.user.uid,
-          email: res.user.email,
-          displayName: res.user.displayName,
-          role: res.user.role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'CLIENT',
-          organizationId: 'org_' + res.user.uid,
-          status: res.user.status || 'active',
-          language: 'en',
-          timezone: 'UTC',
-          emailVerified: false,
-          onboardingStatus: 'NOT_STARTED',
-          onboardingCompletedAt: null,
-          onboardingVersion: 1
-        };
-        setUser(authUser);
-        localStorage.setItem('saas_auth_user', JSON.stringify(authUser));
-        return;
-      }
-    } catch (err: any) {
-      setError(err.message || 'Signup failed. Please try again.');
-      throw err;
-    }
+    throw new Error('Signup failed: server did not return user record.');
   };
 
   const loginWithGoogle = async () => {

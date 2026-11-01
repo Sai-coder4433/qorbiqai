@@ -44,7 +44,9 @@ import {
   StandeeOrderStatus,
   ShippingAddressRecord,
   ProductActivationRecord,
-  PublicBusinessSettings
+  PublicBusinessSettings,
+  QorbiqPlanId,
+  QorbiqPlanConfig
 } from './types.ts';
 import { generateExperienceCardsForBusiness } from './experience-cards.ts';
 import { paymentGatewayRegistry, paymentProvider } from './payments/index.ts';
@@ -128,17 +130,121 @@ export const SUPER_ADMIN_ALLOWLIST = new Set([
 ]);
 
 // ========================================================
-// SECTION 1: PRODUCT MODEL — ONE PLAN ONLY
-// Plan name: ReviewFlow Unlimited
+// QORBIQ AI – UPDATED PRICING & PAYMENT PLANS (EXACTLY TWO PLANS)
+// PLAN 1: HALF-YEARLY
+//   - Plan Name: Qorbiq AI – 6 Months
+//   - Price: ₹1,800 INR
+//   - Access Duration: 180 Days
+//   - Billing Type: One-Time Payment
+//   - Auto Renewal: Disabled
+//   - Renewal: Manual
+// PLAN 2: YEARLY
+//   - Plan Name: Qorbiq AI – 12 Months
+//   - Price: ₹2,999 INR
+//   - Access Duration: 365 Days
+//   - Billing Type: One-Time Payment
+//   - Auto Renewal: Disabled
+//   - Renewal: Manual
 // ========================================================
+
+export const QORBIQ_PLANS: Record<QorbiqPlanId, QorbiqPlanConfig> = {
+  qorbiq_6_months: {
+    id: 'qorbiq_6_months',
+    name: 'Qorbiq AI – 6 Months',
+    price: 1800,
+    currency: 'INR',
+    durationDays: 180,
+    billingType: 'One-Time Payment',
+    autoRenew: false,
+    renewal: 'Manual',
+    description: '180 days direct access to Qorbiq AI with zero recurring debits or hidden mandates.',
+    tagline: 'Flexible 6-Month AI review automation for growing local businesses.',
+    features: [
+      '180 Days Full Access (6 Months)',
+      'One-Time Payment — No Mandates',
+      'Manual Renewal Only',
+      'Unlimited AI review generation',
+      'Unlimited review regeneration',
+      'Permanent Dynamic QR with server redirect',
+      '4K HD print & SVG vector QR download',
+      'NFC smart stand & counter tag support',
+      'Direct Google Review journey integration',
+      'English, Hindi & Marathi natural support',
+      'CRM lead tracking & sales follow-up portal',
+      'Live scan & copy conversion analytics'
+    ]
+  },
+  qorbiq_12_months: {
+    id: 'qorbiq_12_months',
+    name: 'Qorbiq AI – 12 Months',
+    price: 2999,
+    currency: 'INR',
+    durationDays: 365,
+    billingType: 'One-Time Payment',
+    autoRenew: false,
+    renewal: 'Manual',
+    description: '365 days full access to Qorbiq AI with maximum annual savings and zero recurring debit.',
+    tagline: 'Best Value: 1 Full Year access with ₹601 savings compared to two 6-month cycles.',
+    discount: 16.7,
+    features: [
+      '365 Days Full Access (12 Months / 1 Year)',
+      'One-Time Payment — No Mandates',
+      'Manual Renewal Only',
+      'Save ₹601 compared to two 6-month cycles',
+      'Unlimited AI review generation',
+      'Unlimited review regeneration',
+      'Permanent Dynamic QR with server redirect',
+      '4K HD print & SVG vector QR download',
+      'NFC smart stand & counter tag support',
+      'Direct Google Review journey integration',
+      'English, Hindi & Marathi natural support',
+      'CRM lead tracking & sales follow-up portal',
+      'Live scan & copy conversion analytics'
+    ]
+  }
+};
+
+export function getQorbiqPlan(planIdOrAlias?: string): QorbiqPlanConfig | null {
+  if (!planIdOrAlias) return null;
+  const normalized = String(planIdOrAlias).toLowerCase().trim();
+  if (
+    normalized === 'qorbiq_6_months' ||
+    normalized === '6_months' ||
+    normalized === '6months' ||
+    normalized === 'half_yearly' ||
+    normalized === 'halfyearly' ||
+    normalized === 'plan_6_months' ||
+    normalized === 'monthly'
+  ) {
+    return QORBIQ_PLANS.qorbiq_6_months;
+  }
+  if (
+    normalized === 'qorbiq_12_months' ||
+    normalized === '12_months' ||
+    normalized === '12months' ||
+    normalized === 'yearly' ||
+    normalized === 'annual' ||
+    normalized === 'plan_12_months' ||
+    normalized === 'reviewflow_unlimited' ||
+    normalized === 'qorbiq_unlimited'
+  ) {
+    return QORBIQ_PLANS.qorbiq_12_months;
+  }
+  return null;
+}
+
+export function getAllQorbiqPlans(): QorbiqPlanConfig[] {
+  return [QORBIQ_PLANS.qorbiq_6_months, QORBIQ_PLANS.qorbiq_12_months];
+}
+
 export const REVIEWFLOW_UNLIMITED_PLAN: ReviewFlowPlanDefinition = {
   id: 'reviewflow_unlimited',
-  name: 'ReviewFlow Unlimited',
+  name: 'Qorbiq AI',
   tagline: 'All-inclusive Google Review automation with unlimited AI generations, permanent dynamic QR codes, NFC support, and CRM.',
-  monthlyPrice: 299,
-  yearlyPrice: 2999,
+  monthlyPrice: 1800, // Plan 1: 6 Months (₹1,800 INR, 180 Days)
+  yearlyPrice: 2999,  // Plan 2: 12 Months (₹2,999 INR, 365 Days)
   currency: 'INR',
-  description: 'The single, complete Google Review assistance SaaS plan for local businesses with unlimited AI generation.',
+  description: 'Two simple one-time payment plans for local businesses: 6 Months (₹1,800) and 12 Months (₹2,999).',
   features: [
     'Unlimited AI review generation',
     'Unlimited regeneration',
@@ -152,12 +258,12 @@ export const REVIEWFLOW_UNLIMITED_PLAN: ReviewFlowPlanDefinition = {
     'Multi-language (English, Hindi, Marathi)'
   ],
   trialDays: 0,
-  discount: 16.4,
+  discount: 16.7,
   paymentGateway: 'cashfree',
   planStatus: 'ACTIVE',
-  currentVersion: 1,
+  currentVersion: 2,
   launchReady: true,
-  priceMonthly: 299,
+  priceMonthly: 1800,
   maxBusinesses: 1,
   maxQrCodes: 1,
   maxAiMonthly: 999999,
@@ -849,7 +955,13 @@ class ReviewFlowStore {
   }
 
   upsertUser(userData: { uid: string; email: string; displayName?: string; lastLoginAt?: string; role?: UserRole; status?: 'active' | 'suspended' }): ReviewFlowUser {
-    const existing = this.getUserByUid(userData.uid);
+    let existing = this.getUserByUid(userData.uid);
+    if (!existing && userData.email) {
+      existing = this.getUserByEmail(userData.email);
+      if (existing) {
+        existing.uid = userData.uid;
+      }
+    }
     const isSuperAdminEmail = SUPER_ADMIN_ALLOWLIST.has(userData.email.toLowerCase());
     const now = new Date().toISOString();
 
@@ -887,30 +999,30 @@ class ReviewFlowStore {
 
     this.data.users.push(newUser);
 
-    // Provision Starter initial trial subscription if none exists
-    if (!this.getSubscription(userData.uid)) {
+    // Super Admin root workspace initialization only; client accounts activate strictly upon payment verification
+    if (isSuperAdminEmail && !this.getSubscription(userData.uid)) {
       this.data.subscriptions.push({
         id: 'sub_' + crypto.randomBytes(6).toString('hex'),
         ownerUid: userData.uid,
-        planId: 'reviewflow_unlimited',
-        planName: 'ReviewFlow Unlimited',
+        planId: 'qorbiq_12_months',
+        planName: 'Qorbiq AI – 12 Months',
         planVersion: 1,
-        price: 999,
-        billingInterval: 'monthly',
-        status: 'trialing',
-        priceMonthly: 49,
+        price: 2999,
+        billingInterval: 'yearly',
+        status: 'ACTIVE',
+        priceMonthly: 2999,
         currency: 'INR',
-        currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        currentPeriodEnd: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
         aiGenerationsUsedThisMonth: 0,
-        maxAiMonthly: isSuperAdminEmail ? 50000 : 100,
-        maxQrCodes: isSuperAdminEmail ? 999 : 1,
-        maxBusinesses: isSuperAdminEmail ? 999 : 1,
-        businessLimit: isSuperAdminEmail ? 999 : 1,
-        nfcCardLimit: isSuperAdminEmail ? 999 : 1,
-        creditsAllocated: isSuperAdminEmail ? 50000 : 100,
+        maxAiMonthly: 50000,
+        maxQrCodes: 999,
+        maxBusinesses: 999,
+        businessLimit: 999,
+        nfcCardLimit: 999,
+        creditsAllocated: 50000,
         creditsUsed: 0,
-        creditsRemaining: isSuperAdminEmail ? 50000 : 100,
-        paymentStatus: 'test_paid',
+        creditsRemaining: 50000,
+        paymentStatus: 'paid',
         createdAt: now,
         updatedAt: now
       });
@@ -947,7 +1059,7 @@ class ReviewFlowStore {
     if (!cleanEmail || !cleanEmail.includes('@')) {
       return { error: 'Please enter a valid email address.' };
     }
-    if (!params.password || params.password.length < 6) {
+    if (params.password && params.password.length < 6) {
       return { error: 'Password must be at least 6 characters long.' };
     }
     if (!params.name || !params.name.trim()) {
@@ -956,7 +1068,49 @@ class ReviewFlowStore {
 
     const existing = this.getUserByEmail(cleanEmail);
     if (existing) {
-      return { error: 'An account with this email address already exists. Please sign in.' };
+      // If user already exists in database, seamlessly update their credentials and profile
+      // so signup always completes without throwing "An account with this email address already exists"
+      if (params.uid) existing.uid = params.uid;
+      if (params.name) existing.displayName = params.name.trim();
+      if (params.phone) existing.phone = params.phone.trim();
+      if (params.password) existing.passwordHash = this.hashPassword(params.password);
+      existing.termsAccepted = params.termsAccepted ?? true;
+      if (params.emailVerified !== undefined) existing.emailVerified = params.emailVerified;
+      existing.lastLoginAt = new Date().toISOString();
+      existing.updatedAt = new Date().toISOString();
+
+      // Ensure default subscription exists
+      let sub = this.getSubscription(existing.uid);
+      if (!sub) {
+        this.data.subscriptions.push({
+          id: 'sub_' + crypto.randomBytes(6).toString('hex'),
+          ownerUid: existing.uid,
+          planId: 'reviewflow_unlimited',
+          planName: 'ReviewFlow Unlimited',
+          planVersion: 1,
+          price: 999,
+          billingInterval: 'monthly',
+          status: 'trialing',
+          priceMonthly: 49,
+          currency: 'INR',
+          currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          aiGenerationsUsedThisMonth: 0,
+          maxAiMonthly: 100,
+          maxQrCodes: 1,
+          maxBusinesses: 1,
+          businessLimit: 1,
+          nfcCardLimit: 1,
+          creditsAllocated: 100,
+          creditsUsed: 0,
+          creditsRemaining: 100,
+          paymentStatus: 'test_paid',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+      }
+
+      this.persist();
+      return { user: existing };
     }
 
     const uid = params.uid || ('usr_' + crypto.randomBytes(6).toString('hex'));
@@ -978,7 +1132,7 @@ class ReviewFlowStore {
       onboardingStatus: isSuperAdminEmail ? 'COMPLETED' : 'NOT_STARTED',
       onboardingCompletedAt: isSuperAdminEmail ? now : null,
       onboardingVersion: 1,
-      passwordHash: this.hashPassword(params.password),
+      passwordHash: params.password ? this.hashPassword(params.password) : undefined,
       createdAt: now,
       updatedAt: now,
       lastLoginAt: now
@@ -1661,18 +1815,34 @@ class ReviewFlowStore {
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
+  refreshSubscriptionStatus(sub?: ReviewFlowSubscription): ReviewFlowSubscription | undefined {
+    if (!sub) return undefined;
+    if (sub.currentPeriodEnd) {
+      const isPastEnd = new Date(sub.currentPeriodEnd).getTime() < Date.now();
+      if (isPastEnd && (sub.autoRenew === false || sub.status === 'cancelled' || sub.status === 'cancellation_pending')) {
+        if (sub.status !== 'EXPIRED' && sub.status !== 'expired') {
+          sub.status = 'EXPIRED';
+          sub.updatedAt = new Date().toISOString();
+        }
+      }
+    }
+    return sub;
+  }
+
   /** Primary (backward-compat) subscription: first active/trialing, else first overall */
   getSubscription(ownerUid: string): ReviewFlowSubscription | undefined {
     const subs = this.getSubscriptionsByOwner(ownerUid);
-    return (
-      subs.find(s => s.status === 'active') ||
+    const resolved = (
+      subs.find(s => s.status === 'ACTIVE' || s.status === 'active') ||
       subs.find(s => s.status === 'trialing') ||
       subs[0]
     );
+    return this.refreshSubscriptionStatus(resolved);
   }
 
   getSubscriptionById(id: string): ReviewFlowSubscription | undefined {
-    return this.data.subscriptions.find(s => s.id === id);
+    const sub = this.data.subscriptions.find(s => s.id === id);
+    return this.refreshSubscriptionStatus(sub);
   }
 
   /** Create a PENDING subscription for a new business purchase */
@@ -1959,17 +2129,24 @@ class ReviewFlowStore {
   createPaymentIntent(params: {
     userId: string;
     planId: string;
-    amount: number;
-    currency: string;
+    amount?: number;
+    currency?: string;
     billingInterval?: 'monthly' | 'yearly';
+    billingModel?: 'ONE_TIME' | 'SUBSCRIPTION';
+    purchaseType?: 'MONTHLY_PAY_ONCE' | 'MONTHLY_SUBSCRIPTION' | 'YEARLY_PAY_ONCE' | 'YEARLY_SUBSCRIPTION';
+    autoRenew?: boolean;
     idempotencyKey?: string;
     gateway?: 'RAZORPAY' | 'CASHFREE' | string;
     razorpayOrderId?: string;
     cashfreeOrderId?: string;
     cashfreeSubscriptionId?: string;
     cashfreePaymentSessionId?: string;
+    cashfreeSubscriptionSessionId?: string;
     cashfreeAuthLink?: string;
     subscriptionId?: string;
+    customerName?: string;
+    customerEmail?: string;
+    businessName?: string;
     paymentType?: 'NEW_BUSINESS_SUBSCRIPTION' | 'CREDIT_PURCHASE' | 'SUBSCRIPTION_RENEWAL';
   }): ReviewFlowPayment {
     const now = new Date().toISOString();
@@ -1978,12 +2155,37 @@ class ReviewFlowStore {
     const orderId = params.cashfreeOrderId || params.razorpayOrderId || ('order_' + crypto.randomBytes(8).toString('hex'));
     const idempotencyKey = params.idempotencyKey || ('idem_' + crypto.randomBytes(8).toString('hex'));
 
+    const trustedPlan =
+      getQorbiqPlan(params.planId) ||
+      (params.billingInterval === 'yearly' ? QORBIQ_PLANS.qorbiq_12_months : QORBIQ_PLANS.qorbiq_6_months);
+    const planAmount = trustedPlan.price;
+    const durationDays = trustedPlan.durationDays;
+    const billingType = 'One-Time Payment';
+    const autoRenew = false;
+    const renewal = 'Manual';
+
+    const billingInterval: 'monthly' | 'yearly' = trustedPlan.id === 'qorbiq_12_months' ? 'yearly' : 'monthly';
+    const purchaseType = trustedPlan.id === 'qorbiq_12_months' ? 'YEARLY_PAY_ONCE' : 'MONTHLY_PAY_ONCE';
+
     const existing = this.data.payments.find(p => p.idempotencyKey === idempotencyKey && p.userId === params.userId);
     if (existing) {
       if (params.razorpayOrderId) existing.razorpayOrderId = params.razorpayOrderId;
       if (params.cashfreeOrderId) existing.cashfreeOrderId = params.cashfreeOrderId;
       if (params.cashfreeSubscriptionId) existing.cashfreeSubscriptionId = params.cashfreeSubscriptionId;
       if (params.cashfreePaymentSessionId) existing.cashfreePaymentSessionId = params.cashfreePaymentSessionId;
+      if (params.cashfreeSubscriptionSessionId) existing.cashfreeSubscriptionSessionId = params.cashfreeSubscriptionSessionId;
+      if (params.customerName) existing.customerName = params.customerName;
+      if (params.customerEmail) existing.customerEmail = params.customerEmail;
+      if (params.businessName) existing.businessName = params.businessName;
+      existing.amount = planAmount;
+      existing.planId = trustedPlan.id;
+      existing.planName = trustedPlan.name;
+      existing.durationDays = durationDays;
+      existing.billingType = billingType;
+      existing.renewal = renewal;
+      existing.billingModel = 'ONE_TIME';
+      existing.purchaseType = purchaseType;
+      existing.autoRenew = false;
       return existing;
     }
 
@@ -1997,15 +2199,26 @@ class ReviewFlowStore {
       cashfreeOrderId: params.cashfreeOrderId || (gateway === 'CASHFREE' ? orderId : undefined),
       cashfreeSubscriptionId: params.cashfreeSubscriptionId,
       cashfreePaymentSessionId: params.cashfreePaymentSessionId,
+      cashfreeSubscriptionSessionId: params.cashfreeSubscriptionSessionId,
       cashfreeAuthLink: params.cashfreeAuthLink,
       gateway,
-      amount: params.amount,
-      currency: params.currency || 'INR',
+      amount: planAmount,
+      currency: trustedPlan.currency || 'INR',
       status: 'PENDING',
       paymentType: params.paymentType || 'NEW_BUSINESS_SUBSCRIPTION',
-      planId: params.planId || 'reviewflow_unlimited',
+      billingModel: 'ONE_TIME',
+      purchaseType,
+      autoRenew: false,
+      billingType: 'One-Time Payment',
+      renewal: 'Manual',
+      planId: trustedPlan.id,
+      planName: trustedPlan.name,
+      durationDays,
       planVersion: currentPlan.currentVersion || 1,
-      billingInterval: params.billingInterval || 'monthly',
+      billingInterval,
+      customerName: params.customerName,
+      customerEmail: params.customerEmail,
+      businessName: params.businessName,
       idempotencyKey,
       createdAt: now
     };
@@ -2114,14 +2327,23 @@ class ReviewFlowStore {
     if (params.cfOrderId) payment.cashfreeOrderId = params.cfOrderId;
     if (params.cfSubscriptionId) payment.cashfreeSubscriptionId = params.cfSubscriptionId;
 
-    const currentPlan = this.getPlanDefinition();
-    payment.planVersion = currentPlan.currentVersion || 1;
+    const plan =
+      getQorbiqPlan(payment.planId) ||
+      (payment.billingInterval === 'yearly' || payment.amount === 2999
+        ? QORBIQ_PLANS.qorbiq_12_months
+        : QORBIQ_PLANS.qorbiq_6_months);
 
-    const subId = payment.subscriptionId || ('sub_' + crypto.randomBytes(6).toString('hex'));
-    payment.subscriptionId = subId;
+    const periodDays = plan.durationDays; // 180 or 365
+    const billingInterval: 'monthly' | 'yearly' = plan.id === 'qorbiq_12_months' ? 'yearly' : 'monthly';
+    const purchaseType = plan.id === 'qorbiq_12_months' ? 'YEARLY_PAY_ONCE' : 'MONTHLY_PAY_ONCE';
 
-    const billingInterval = payment.billingInterval || 'monthly';
-    const periodDays = billingInterval === 'yearly' ? 365 : 30;
+    payment.planId = plan.id;
+    payment.planName = plan.name;
+    payment.amount = plan.price;
+    payment.durationDays = periodDays;
+    payment.billingType = 'One-Time Payment';
+    payment.autoRenew = false;
+    payment.renewal = 'Manual';
 
     const providerSubRef =
       params.cfSubscriptionId ||
@@ -2132,150 +2354,244 @@ class ReviewFlowStore {
       params.razorpayOrderId ||
       payment.razorpayOrderId;
 
-    // Create Subscription record (Requirement 11, 12)
-    const subscription: ReviewFlowSubscription = {
-      id: subId,
-      ownerUid: params.userId,
-      userId: params.userId,
-      planId: 'reviewflow_unlimited',
-      planName: 'ReviewFlow Unlimited',
-      planVersion: currentPlan.currentVersion || 1,
-      price: payment.amount,
-      billingInterval,
-      provider: provider.name,
-      providerSubscriptionId: providerSubRef,
-      status: 'ACTIVE',
-      amount: payment.amount,
-      priceMonthly: billingInterval === 'yearly' ? Math.round(payment.amount / 12) : payment.amount,
-      currency: payment.currency || 'INR',
-      currentPeriodStart: now,
-      currentPeriodEnd: new Date(Date.now() + periodDays * 24 * 60 * 60 * 1000).toISOString(),
-      autoRenew: true,
-      renewalCount: 0,
-      aiGenerationsUsedThisMonth: 0,
-      maxAiMonthly: 999999, // Unlimited
-      maxQrCodes: 1,
-      maxBusinesses: 1,
-      businessLimit: 1,
-      nfcCardLimit: 1,
-      creditsAllocated: 999999,
-      creditsUsed: 0,
-      creditsRemaining: 999999,
-      paymentStatus: 'paid',
-      lastPaymentDate: now,
-      createdAt: now,
-      updatedAt: now
-    };
+    // Check if customer already has a subscription record (Manual Renewal scenario - Requirement 10)
+    let subscription = this.data.subscriptions.find(
+      s => s.ownerUid === params.userId || s.userId === params.userId
+    );
+    let business: ReviewFlowBusiness | undefined;
 
-    // Requirement 9: Create each business with unique businessId and require mandatory onboarding
-    const businessId = 'biz_' + crypto.randomBytes(6).toString('hex');
-    subscription.businessId = businessId;
-    payment.businessId = businessId;
+    let currentPeriodStart: string;
+    let currentPeriodEnd: string;
 
-    const business: ReviewFlowBusiness = {
-      id: businessId,
-      ownerUid: params.userId,
-      ownerId: params.userId,
-      subscriptionId: subId,
-      businessName: '',
-      category: '',
-      subcategory: '',
-      description: '',
-      country: 'India',
-      state: '',
-      city: '',
-      primaryLanguage: 'English',
-      preferredLanguage: 'English',
-      logoUrl: '',
-      website: '',
-      phone: '',
-      email: '',
-      categoryDetails: {},
-      customFields: [],
-      verifiedFacts: [],
-      googleReviewUrl: '',
-      googleReviewVerified: false,
-      googleProfileConnected: false,
-      onboardingStatus: 'NOT_STARTED',
-      onboardingCompleted: false,
-      onboardingStep: 1,
-      aiTopicsGenerated: false,
-      status: 'PENDING',
-      createdAt: now,
-      updatedAt: now
-    };
+    if (subscription && subscription.paymentStatus === 'paid' && subscription.status !== 'trialing') {
+      // Manual Renewal of existing subscription (Requirement 10)
+      const isExpired =
+        subscription.status === 'EXPIRED' ||
+        new Date(subscription.currentPeriodEnd).getTime() <= Date.now();
 
-    // Provision unique permanent dynamic QR code shell for the business
-    const uniqueCode = 'rf_' + crypto.randomBytes(4).toString('hex');
-    const primaryQr: ReviewFlowQrCode = {
-      id: 'qr_' + crypto.randomBytes(6).toString('hex'),
-      businessId,
-      ownerUid: params.userId,
-      label: 'Primary NFC & Stand QR',
-      uniqueCode,
-      destinationUrl: `/r/${uniqueCode}`,
-      status: 'ACTIVE',
-      scanCount: 0,
-      createdAt: now,
-      updatedAt: now
-    };
+      if (isExpired) {
+        currentPeriodStart = now;
+        currentPeriodEnd = new Date(Date.now() + periodDays * 24 * 60 * 60 * 1000).toISOString();
+      } else {
+        currentPeriodStart = subscription.currentPeriodStart || now;
+        currentPeriodEnd = new Date(
+          new Date(subscription.currentPeriodEnd).getTime() + periodDays * 24 * 60 * 60 * 1000
+        ).toISOString();
+      }
 
-    const creditAccount: ReviewFlowCreditAccount = {
-      id: 'cred_' + businessId,
-      userId: params.userId,
-      businessId,
-      subscriptionId: subId,
-      monthlyAllocation: 999999,
-      used: 0,
-      remaining: 999999,
-      resetDate: new Date(Date.now() + periodDays * 24 * 60 * 60 * 1000).toISOString(),
-      updatedAt: now
-    };
+      subscription.planId = plan.id;
+      subscription.planName = plan.name;
+      subscription.price = plan.price;
+      subscription.amount = plan.price;
+      subscription.priceMonthly = plan.price;
+      subscription.durationDays = periodDays;
+      subscription.billingInterval = billingInterval;
+      subscription.billingModel = 'ONE_TIME';
+      subscription.purchaseType = purchaseType;
+      subscription.autoRenew = false;
+      subscription.billingType = 'One-Time Payment';
+      subscription.renewal = 'Manual';
+      subscription.status = 'ACTIVE';
+      subscription.currentPeriodStart = currentPeriodStart;
+      subscription.currentPeriodEnd = currentPeriodEnd;
+      subscription.entitlementStartDate = currentPeriodStart;
+      subscription.entitlementExpiryDate = currentPeriodEnd;
+      subscription.renewalDate = null;
+      subscription.nextRenewalDate = null;
+      subscription.paymentStatus = 'paid';
+      subscription.lastPaymentDate = now;
+      subscription.provider = provider.name;
+      subscription.providerSubscriptionId = providerSubRef;
+      subscription.cashfreeOrderId = payment.cashfreeOrderId;
+      subscription.cashfreePaymentId = payment.cashfreePaymentId;
+      subscription.updatedAt = now;
 
-    this.data.subscriptions.push(subscription);
-    this.data.businesses.push(business);
-    this.data.qrCodes.push(primaryQr);
-    this.data.creditAccounts.push(creditAccount);
-    this.data.activeBusinessIdByOwner[params.userId] = businessId;
+      payment.subscriptionId = subscription.id;
+      payment.businessId = subscription.businessId || null;
+      payment.entitlementStartDate = currentPeriodStart;
+      payment.entitlementExpiryDate = currentPeriodEnd;
+
+      if (subscription.businessId) {
+        business = this.getBusinessById(subscription.businessId);
+        if (business && (business.status === 'PAUSED' || business.status === 'PENDING')) {
+          business.status = 'ACTIVE';
+          business.updatedAt = now;
+        }
+      }
+    } else {
+      // First-time purchase: Create new Subscription, Business shell & Dynamic QR
+      const subId = payment.subscriptionId || ('sub_' + crypto.randomBytes(6).toString('hex'));
+      payment.subscriptionId = subId;
+
+      currentPeriodStart = now;
+      currentPeriodEnd = new Date(Date.now() + periodDays * 24 * 60 * 60 * 1000).toISOString();
+
+      payment.entitlementStartDate = currentPeriodStart;
+      payment.entitlementExpiryDate = currentPeriodEnd;
+
+      subscription = {
+        id: subId,
+        ownerUid: params.userId,
+        userId: params.userId,
+        planId: plan.id,
+        planName: plan.name,
+        planVersion: 1,
+        price: plan.price,
+        billingInterval,
+        billingModel: 'ONE_TIME',
+        purchaseType,
+        autoRenew: false,
+        billingType: 'One-Time Payment',
+        renewal: 'Manual',
+        durationDays: periodDays,
+        entitlementStartDate: currentPeriodStart,
+        entitlementExpiryDate: currentPeriodEnd,
+        provider: provider.name,
+        providerSubscriptionId: providerSubRef,
+        cashfreeSubscriptionId: payment.cashfreeSubscriptionId,
+        cashfreeOrderId: payment.cashfreeOrderId,
+        cashfreePaymentId: payment.cashfreePaymentId,
+        status: 'ACTIVE',
+        amount: plan.price,
+        priceMonthly: plan.price,
+        currency: payment.currency || 'INR',
+        currentPeriodStart,
+        currentPeriodEnd,
+        renewalDate: null,
+        nextRenewalDate: null,
+        renewalCount: 0,
+        aiGenerationsUsedThisMonth: 0,
+        maxAiMonthly: 999999, // Unlimited
+        maxQrCodes: 1,
+        maxBusinesses: 1,
+        businessLimit: 1,
+        nfcCardLimit: 1,
+        creditsAllocated: 999999,
+        creditsUsed: 0,
+        creditsRemaining: 999999,
+        paymentStatus: 'paid',
+        lastPaymentDate: now,
+        createdAt: now,
+        updatedAt: now
+      };
+
+      const businessId = 'biz_' + crypto.randomBytes(6).toString('hex');
+      subscription.businessId = businessId;
+      payment.businessId = businessId;
+
+      business = {
+        id: businessId,
+        ownerUid: params.userId,
+        ownerId: params.userId,
+        subscriptionId: subId,
+        businessName: '',
+        category: '',
+        subcategory: '',
+        description: '',
+        country: 'India',
+        state: '',
+        city: '',
+        primaryLanguage: 'English',
+        preferredLanguage: 'English',
+        logoUrl: '',
+        website: '',
+        phone: '',
+        email: '',
+        categoryDetails: {},
+        customFields: [],
+        verifiedFacts: [],
+        googleReviewUrl: '',
+        googleReviewVerified: false,
+        googleProfileConnected: false,
+        onboardingStatus: 'NOT_STARTED',
+        onboardingCompleted: false,
+        onboardingStep: 1,
+        aiTopicsGenerated: false,
+        status: 'PENDING',
+        createdAt: now,
+        updatedAt: now
+      };
+
+      const uniqueCode = 'rf_' + crypto.randomBytes(4).toString('hex');
+      const primaryQr: ReviewFlowQrCode = {
+        id: 'qr_' + crypto.randomBytes(6).toString('hex'),
+        businessId,
+        ownerUid: params.userId,
+        label: 'Primary NFC & Stand QR',
+        uniqueCode,
+        destinationUrl: `/r/${uniqueCode}`,
+        status: 'ACTIVE',
+        scanCount: 0,
+        createdAt: now,
+        updatedAt: now
+      };
+
+      const creditAccount: ReviewFlowCreditAccount = {
+        id: 'cred_' + businessId,
+        userId: params.userId,
+        businessId,
+        subscriptionId: subId,
+        monthlyAllocation: 999999,
+        used: 0,
+        remaining: 999999,
+        resetDate: currentPeriodEnd,
+        updatedAt: now
+      };
+
+      this.data.subscriptions.push(subscription);
+      this.data.businesses.push(business);
+      this.data.qrCodes.push(primaryQr);
+      this.data.creditAccounts.push(creditAccount);
+      this.data.activeBusinessIdByOwner[params.userId] = businessId;
+    }
+
+    const resolvedBusinessId = subscription.businessId || business?.id || '';
+    const resolvedSubId = subscription.id;
 
     this.addAuditLogRecord({
       id: 'log_' + Date.now(),
       userId: params.userId,
-      businessId,
+      businessId: resolvedBusinessId,
       action: 'payment_verified',
       timestamp: now,
-      metadata: { paymentId: payment.id, amount: payment.amount, subscriptionId: subId }
+      metadata: { paymentId: payment.id, amount: payment.amount, subscriptionId: resolvedSubId }
     });
     this.addAuditLogRecord({
       id: 'log_' + (Date.now() + 1),
       userId: params.userId,
-      businessId,
+      businessId: resolvedBusinessId,
       action: 'subscription_created',
       timestamp: now,
-      metadata: { subscriptionId: subId, planId: subscription.planId, planVersion: subscription.planVersion }
+      metadata: { subscriptionId: resolvedSubId, planId: subscription.planId, planVersion: subscription.planVersion }
     });
     this.addAuditLogRecord({
       id: 'log_' + (Date.now() + 2),
       userId: params.userId,
-      businessId,
+      businessId: resolvedBusinessId,
       action: 'business_created',
       timestamp: now,
-      metadata: { businessId, ownerUid: params.userId, qrCode: uniqueCode }
+      metadata: { businessId: resolvedBusinessId, ownerUid: params.userId }
     });
 
     this.persist();
 
     // Automatically issue sequential professional invoice (Module 2)
     try {
-      this.createInvoice({
+      const inv = this.createInvoice({
         paymentId: payment.id,
-        subscriptionId: subId,
+        subscriptionId: resolvedSubId,
         userId: params.userId,
-        businessId,
+        businessId: resolvedBusinessId,
         paymentGateway: provider.name,
         paymentReference: payment.cashfreePaymentId || payment.razorpayPaymentId || payment.id,
-        paymentDate: now
+        paymentDate: now,
+        status: 'PAID'
       });
+      if (inv) {
+        payment.invoiceId = inv.id;
+        payment.invoiceNumber = inv.invoiceNumber;
+        this.persist();
+      }
     } catch (invErr: any) {
       console.warn('[ReviewFlowStore] Automatic invoice creation notice:', invErr.message);
     }
@@ -2309,19 +2625,27 @@ class ReviewFlowStore {
     const periodDays = sub.billingInterval === 'yearly' ? 365 : 30;
     const renewalAmount = params.amount || sub.price;
 
+    const renewalGateway = (sub.provider || 'CASHFREE').toUpperCase();
+    const renewalPurchaseType = sub.billingInterval === 'yearly' ? 'YEARLY_SUBSCRIPTION' : 'MONTHLY_SUBSCRIPTION';
+
     // Record renewal payment snapshot
     const renewalPayment: ReviewFlowPayment = {
       id: 'pay_renew_' + crypto.randomBytes(8).toString('hex'),
       userId: sub.ownerUid,
       businessId: sub.businessId || null,
       subscriptionId: sub.id,
-      gateway: 'RAZORPAY',
-      razorpayOrderId: params.orderId,
-      razorpayPaymentId: params.paymentId,
+      gateway: renewalGateway,
+      razorpayOrderId: renewalGateway === 'RAZORPAY' ? params.orderId : undefined,
+      razorpayPaymentId: renewalGateway === 'RAZORPAY' ? params.paymentId : undefined,
+      cashfreeOrderId: renewalGateway === 'CASHFREE' ? params.orderId : undefined,
+      cashfreePaymentId: renewalGateway === 'CASHFREE' ? params.paymentId : undefined,
       amount: renewalAmount,
       currency: sub.currency || 'INR',
       status: 'PAID',
       paymentType: 'SUBSCRIPTION_RENEWAL',
+      billingModel: 'SUBSCRIPTION',
+      purchaseType: renewalPurchaseType,
+      autoRenew: true,
       planId: sub.planId,
       planVersion: sub.planVersion || 1,
       billingInterval: sub.billingInterval,
@@ -2333,9 +2657,13 @@ class ReviewFlowStore {
     this.data.payments.push(renewalPayment);
 
     // Extend subscription period
+    const nextPeriodEnd = new Date(Date.now() + periodDays * 24 * 60 * 60 * 1000).toISOString();
     sub.status = 'ACTIVE';
     sub.currentPeriodStart = now;
-    sub.currentPeriodEnd = new Date(Date.now() + periodDays * 24 * 60 * 60 * 1000).toISOString();
+    sub.currentPeriodEnd = nextPeriodEnd;
+    sub.renewalDate = nextPeriodEnd;
+    sub.nextRenewalDate = nextPeriodEnd;
+    sub.autoRenew = true;
     sub.renewalCount = (sub.renewalCount || 0) + 1;
     sub.updatedAt = now;
 
@@ -2348,20 +2676,25 @@ class ReviewFlowStore {
       }
     }
 
-    this.persist();
-
     // Automatically issue sequential invoice for renewal (Module 2)
     try {
-      this.createInvoice({
+      const inv = this.createInvoice({
         paymentId: renewalPayment.id,
         subscriptionId: sub.id,
         userId: sub.ownerUid,
         businessId: sub.businessId || undefined,
-        paymentGateway: renewalPayment.gateway || 'CASHFREE',
+        paymentGateway: renewalGateway,
         paymentReference: params.paymentId || renewalPayment.id,
-        paymentDate: now
+        paymentDate: now,
+        status: 'PAID'
       });
+      if (inv) {
+        renewalPayment.invoiceId = inv.id;
+        renewalPayment.invoiceNumber = inv.invoiceNumber;
+      }
     } catch (e) {}
+
+    this.persist();
 
     firebaseSyncService.syncPaymentDoc(renewalPayment).catch(() => {});
     firebaseSyncService.syncSubscriptionDoc(sub).catch(() => {});
@@ -4029,16 +4362,25 @@ class ReviewFlowStore {
     if (!this.data.plan || this.data.plan.id !== 'reviewflow_unlimited') {
       this.data.plan = JSON.parse(JSON.stringify(REVIEWFLOW_UNLIMITED_PLAN));
     }
-    // Official pricing migration: ₹299/month and ₹2,999/year
-    if (this.data.plan.monthlyPrice === 999 && this.data.plan.yearlyPrice === 9999) {
-      this.data.plan.monthlyPrice = 299;
+    // Official pricing update: ₹1,800 (6 Months) and ₹2,999 (12 Months)
+    if (this.data.plan.monthlyPrice !== 1800 || this.data.plan.yearlyPrice !== 2999) {
+      this.data.plan.monthlyPrice = 1800;
       this.data.plan.yearlyPrice = 2999;
-      this.data.plan.priceMonthly = 299;
-      this.data.plan.discount = 16.4;
+      this.data.plan.priceMonthly = 1800;
+      this.data.plan.discount = 16.7;
+      this.data.plan.name = 'Qorbiq AI';
       this.data.plan.paymentGateway = 'cashfree';
       this.persist();
     }
     return this.data.plan;
+  }
+
+  getQorbiqPlan(planIdOrAlias?: string): QorbiqPlanConfig | null {
+    return getQorbiqPlan(planIdOrAlias);
+  }
+
+  getAllQorbiqPlans(): QorbiqPlanConfig[] {
+    return getAllQorbiqPlans();
   }
 
   getPlanVersions(): PlanVersionRecord[] {
@@ -4641,16 +4983,24 @@ class ReviewFlowStore {
           totalAmount: productOrder.subtotal
         }];
       } else if (payment) {
-        const isYearly = payment.billingInterval === 'yearly' || payment.amount === 2999;
-        subtotal = payment.amount || (isYearly ? 2999 : 299);
+        const plan =
+          getQorbiqPlan(payment.planId) ||
+          (payment.billingInterval === 'yearly' || payment.amount === 2999
+            ? QORBIQ_PLANS.qorbiq_12_months
+            : QORBIQ_PLANS.qorbiq_6_months);
+        const isYearly = plan.id === 'qorbiq_12_months';
+        subtotal = payment.amount || plan.price;
         const taxable = isTaxApplicable ? Math.round((subtotal / (1 + effectiveGstRate / 100)) * 100) / 100 : subtotal;
         const gstAmount = isTaxApplicable ? Math.round((subtotal - taxable) * 100) / 100 : 0;
+
+        const itemDesc = isYearly
+          ? 'Qorbiq AI – 12 Months (One-Time Payment, 365 Days Access, Unlimited AI Reviews & Permanent Dynamic QR)'
+          : 'Qorbiq AI – 6 Months (One-Time Payment, 180 Days Access, Unlimited AI Reviews & Permanent Dynamic QR)';
+
         lineItems = [{
-          description: isYearly
-            ? 'Qorbiq AI — Yearly Subscription Plan (₹2,999/yr, Unlimited AI Reviews & Permanent Dynamic QR)'
-            : 'Qorbiq AI — Monthly Subscription Plan (₹299/mo, Unlimited AI Reviews & Permanent Dynamic QR)',
+          description: itemDesc,
           hsnSac: '998315',
-          billingPeriod: isYearly ? '12 Months' : '1 Month',
+          billingPeriod: isYearly ? '365 Days Access (12 Months / 1 Year)' : '180 Days Access (6 Months)',
           quantity: 1,
           unitPrice: subtotal,
           discount: 0,
@@ -4662,18 +5012,18 @@ class ReviewFlowStore {
           totalAmount: subtotal
         }];
       } else {
-        subtotal = 299;
+        subtotal = 1800;
         lineItems = [{
-          description: 'Qorbiq AI Subscription Service',
+          description: 'Qorbiq AI – 6 Months (One-Time Payment, 180 Days Access)',
           quantity: 1,
-          unitPrice: 299,
+          unitPrice: 1800,
           discount: 0,
-          taxableAmount: 299,
+          taxableAmount: 1800,
           gstRate: 0,
           cgstAmount: 0,
           sgstAmount: 0,
           igstAmount: 0,
-          totalAmount: 299
+          totalAmount: 1800
         }];
       }
     }
@@ -4722,7 +5072,13 @@ class ReviewFlowStore {
       currency: 'INR',
       paymentStatus: 'PAID',
       paymentGateway: params.paymentGateway || params.gateway || payment?.gateway || 'CASHFREE',
+      gateway: params.paymentGateway || params.gateway || payment?.gateway || 'CASHFREE',
       paymentReference: params.paymentReference || payment?.cashfreePaymentId || payment?.cashfreeOrderId || resolvedPaymentId,
+      transactionId: params.paymentReference || payment?.cashfreePaymentId || payment?.cashfreeOrderId || resolvedPaymentId,
+      billingInterval: payment?.billingInterval || (subtotal >= 2000 ? 'yearly' : 'monthly'),
+      billingModel: payment?.billingModel || (payment?.autoRenew ? 'SUBSCRIPTION' : 'ONE_TIME'),
+      purchaseType: payment?.purchaseType,
+      autoRenew: payment?.autoRenew,
       status: params.status || 'PAID',
       issuedAt: nowIso,
       createdAt: nowIso,
@@ -5715,7 +6071,7 @@ class ReviewFlowStore {
   } {
     const compliance = this.getComplianceSettings();
     const plan = this.getPlanDefinition();
-    const isSandbox = (process.env.CASHFREE_ENVIRONMENT || 'sandbox').toLowerCase() === 'sandbox';
+    const isSandbox = (process.env.CASHFREE_ENV || process.env.CASHFREE_ENVIRONMENT || 'sandbox').toLowerCase() === 'sandbox';
 
     const items = [
       {

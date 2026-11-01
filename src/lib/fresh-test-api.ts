@@ -124,6 +124,7 @@ export interface SubscriptionData {
     | 'active'
     | 'trialing'
     | 'expired'
+    | 'EXPIRED'
     | 'suspended'
     | 'ACTIVE'
     | 'SUSPENDED'
@@ -135,13 +136,26 @@ export interface SubscriptionData {
     | 'cancelled'
     | 'PAST_DUE'
     | 'CANCELLED';
+  createdAt?: string;
+  updatedAt?: string;
   price?: number;
+  amount?: number;
+  durationDays?: number;
+  entitlementStartDate?: string;
+  entitlementExpiryDate?: string;
+  billingType?: string;
+  renewal?: string;
+  orderId?: string;
+  paymentId?: string;
   priceMonthly: number;
   billingInterval?: 'monthly' | 'yearly';
+  billingModel?: 'ONE_TIME' | 'SUBSCRIPTION';
+  purchaseType?: 'MONTHLY_PAY_ONCE' | 'MONTHLY_SUBSCRIPTION' | 'YEARLY_PAY_ONCE' | 'YEARLY_SUBSCRIPTION';
   currency: string;
   currentPeriodStart?: string;
   currentPeriodEnd: string;
   renewalDate?: string;
+  nextRenewalDate?: string | null;
   autoRenew?: boolean;
   renewalCount?: number;
   cancellationDetails?: {
@@ -161,6 +175,21 @@ export interface SubscriptionData {
   nfcCardLimit?: number;
   paymentStatus?: 'paid' | 'test_paid' | 'pending';
   error?: string;
+}
+
+export interface QorbiqPlanItem {
+  id: 'qorbiq_6_months' | 'qorbiq_12_months';
+  name: string;
+  price: number;
+  currency: string;
+  durationDays: number;
+  billingType: 'One-Time Payment';
+  autoRenew: false;
+  renewal: 'Manual';
+  description: string;
+  tagline: string;
+  features: string[];
+  discount?: number;
 }
 
 export interface PlanDefinition {
@@ -435,15 +464,32 @@ export function sanitizeReviewText(generatedText: string): string {
 async function parseJsonResponse(res: Response, defaultError: string) {
   const text = await res.text();
   if (!text || !text.trim()) {
+    if (!res.ok) {
+      throw new Error(`${defaultError} (Status ${res.status})`);
+    }
     return {};
   }
   try {
     const data = JSON.parse(text);
-    if (!res.ok) throw new Error(data.error || defaultError);
+    if (!res.ok) throw new Error(data.error || data.message || defaultError);
     return data;
   } catch (err: any) {
     if (err.message && !err.message.includes('JSON')) throw err;
-    if (!res.ok) throw new Error(`${defaultError} (Status ${res.status})`);
+    if (!res.ok) {
+      if (res.status === 530) {
+        throw new Error('Connection or origin DNS error (HTTP 530). Please try again in a moment.');
+      }
+      if (res.status === 502 || res.status === 503) {
+        throw new Error('Service is temporarily unavailable. Please try again shortly.');
+      }
+      if (res.status === 403) {
+        throw new Error('Access denied (HTTP 403). Please verify your account credentials or permissions.');
+      }
+      if (res.status === 401) {
+        throw new Error('Authentication failed (HTTP 401). Invalid email or password.');
+      }
+      throw new Error(`${defaultError} (Status ${res.status}: ${res.statusText || 'Request failed'})`);
+    }
     throw new Error('Server returned an unexpected format. Please refresh the page.');
   }
 }
@@ -585,26 +631,48 @@ export const freshTestApi = {
     return await parseJsonResponse(res, 'Failed to load gateway configuration');
   },
 
+  /** Get all official Qorbiq AI One-Time payment plans */
+  async getOfficialPlans(): Promise<{ plans: QorbiqPlanItem[]; mainPlan: any }> {
+    const res = await fetch('/api/plans');
+    const data = await parseJsonResponse(res, 'Failed to load official plans');
+    return {
+      plans: data.plans || [],
+      mainPlan: data.mainPlan
+    };
+  },
+
   /** Create server-side pending subscription/payment intent */
   async createPaymentIntent(params: {
     planId: string;
+    amount?: number;
+    durationDays?: number;
     billingInterval?: 'monthly' | 'yearly';
     idempotencyKey?: string;
     gateway?: 'CASHFREE' | 'RAZORPAY';
-    billingModel?: 'SUBSCRIPTION' | 'ORDER';
+    billingModel?: 'ONE_TIME' | 'SUBSCRIPTION' | 'ORDER';
+    purchaseType?: 'MONTHLY_PAY_ONCE' | 'MONTHLY_SUBSCRIPTION' | 'YEARLY_PAY_ONCE' | 'YEARLY_SUBSCRIPTION';
+    autoRenew?: boolean;
   }): Promise<{
     provider?: 'CASHFREE' | 'RAZORPAY';
     paymentId: string;
     orderId?: string;
     subscriptionId?: string;
     paymentSessionId?: string;
+    subscriptionSessionId?: string;
     authLink?: string;
     environment?: 'sandbox' | 'production';
     amount: number;
     currency: string;
     keyId: string;
     planId: string;
+    planName?: string;
+    durationDays?: number;
+    billingType?: string;
+    renewal?: string;
     billingInterval?: 'monthly' | 'yearly';
+    billingModel?: 'ONE_TIME' | 'SUBSCRIPTION';
+    purchaseType?: 'MONTHLY_PAY_ONCE' | 'MONTHLY_SUBSCRIPTION' | 'YEARLY_PAY_ONCE' | 'YEARLY_SUBSCRIPTION';
+    autoRenew?: boolean;
     businessName: string;
     description: string;
   }> {

@@ -12,7 +12,7 @@ import { generateExperienceCardsForBusiness } from './experience-cards.ts';
 import { aiReviewEngine, sanitizeReviewText } from './ai-review-engine.ts';
 import { firebaseSyncService } from './firebase-sync.service.ts';
 import { paymentGatewayRegistry, paymentProvider } from './payments/index.ts';
-import { generateInvoiceHtml } from './invoice-pdf.service.ts';
+import { generateInvoiceHtml, generateInvoicePdfBuffer } from './invoice-pdf.service.ts';
 
 export const reviewFlowRouter = Router();
 
@@ -1713,11 +1713,13 @@ reviewFlowRouter.post('/admin/test-review-generation', requireSuperAdmin, async 
 });
 
 // =============================================================
-// BILLING & REVIEWFLOW PRO PLAN (Section 11 & 14)
+// BILLING & QORBIQ AI PLANS (Section 11 & 14)
 // =============================================================
-reviewFlowRouter.get('/plans', (_req: Request, res: Response) => {
+reviewFlowRouter.get(['/plans', '/plans/all'], (_req: Request, res: Response) => {
   res.json({
-    mainPlan: REVIEWFLOW_PRO_PLAN,
+    success: true,
+    plans: reviewFlowStore.getAllQorbiqPlans(),
+    mainPlan: reviewFlowStore.getPlanDefinition(),
     comingSoon: COMING_SOON_FEATURES
   });
 });
@@ -1837,85 +1839,122 @@ reviewFlowRouter.get('/config/razorpay', (_req: Request, res: Response) => {
 });
 
 /**
- * GET /plans/reviewflow_unlimited
+ * GET /plans/reviewflow_unlimited and /plans/current
  * Exposes current backend plan configuration for pricing and checkout
  */
 reviewFlowRouter.get(['/plans/reviewflow_unlimited', '/plans/current'], (_req: Request, res: Response) => {
   const plan = reviewFlowStore.getPlanDefinition();
+  const plans = reviewFlowStore.getAllQorbiqPlans();
   res.json({
     success: true,
+    plans,
     plan: {
       id: plan.id,
       name: plan.name,
       tagline: plan.tagline,
-      monthlyPrice: plan.monthlyPrice,
-      yearlyPrice: plan.yearlyPrice,
+      monthlyPrice: plan.monthlyPrice, // ₹1,800 INR (6 Months)
+      yearlyPrice: plan.yearlyPrice,   // ₹2,999 INR (12 Months)
       currency: plan.currency || 'INR',
       features: plan.features,
       currentVersion: plan.currentVersion,
-      discount: plan.discount || 17
+      discount: plan.discount || 16.7
     }
   });
 });
 
 /**
  * POST /subscriptions/intent
- * Step 1: Create a server-side pending subscription/payment intent.
+ * Step 1: Create a server-side pending payment order intent.
  * Validates authenticated Firebase UID.
- * Creates Cashfree or Razorpay order/subscription server-side.
- * Stores pending payment record with idempotencyKey.
+ * Creates Cashfree PG order using the selected plan's exact amount.
+ * Never accepts price or duration blindly from client.
+ * Enforces server-side trusted plan configuration.
  */
 reviewFlowRouter.post('/subscriptions/intent', requireAuth, async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
-    const { billingInterval = 'monthly', idempotencyKey, gateway, billingModel } = req.body;
+    const {
+      planId: rawPlanId,
+      plan: legacyPlan,
+      billingInterval: rawInterval,
+      amount: clientAmount,
+      durationDays: clientDuration,
+      idempotencyKey,
+      gateway
+    } = req.body;
 
-    // Validate billing interval strictly (Requirement 1 & 3)
-    if (billingInterval !== 'monthly' && billingInterval !== 'yearly') {
+    const requestedId = rawPlanId || legacyPlan || (rawInterval === 'yearly' ? 'qorbiq_12_months' : 'qorbiq_6_months');
+    const trustedPlan = reviewFlowStore.getQorbiqPlan(requestedId);
+
+    if (!trustedPlan) {
       return res.status(400).json({
-        error: 'INVALID_BILLING_INTERVAL',
-        message: 'Billing interval must be either "monthly" (₹299/mo) or "yearly" (₹2,999/yr).'
+        error: 'INVALID_PLAN_ID',
+        message: 'Plan ID must be either "qorbiq_6_months" (₹1,800 INR for 180 Days) or "qorbiq_12_months" (₹2,999 INR for 365 Days).'
       });
     }
 
-    // Always fetch official plan pricing server-side; NEVER trust frontend-supplied price (Requirement 1 & 6)
-    const currentPlan = reviewFlowStore.getPlanDefinition();
-    const planAmount = billingInterval === 'yearly' ? currentPlan.yearlyPrice : currentPlan.monthlyPrice;
+    // Requirement 3 & 4: Never accept amount or access duration blindly from frontend input.
+    // Server enforces exact trusted plan pricing and duration.
+    if (clientAmount !== undefined && Number(clientAmount) !== trustedPlan.price) {
+      console.warn(`[Security] Client amount discrepancy detected: received ₹${clientAmount}, enforcing server price ₹${trustedPlan.price}`);
+    }
+    if (clientDuration !== undefined && Number(clientDuration) !== trustedPlan.durationDays) {
+      console.warn(`[Security] Client duration discrepancy detected: received ${clientDuration} days, enforcing server duration ${trustedPlan.durationDays} days`);
+    }
 
-    // Resolve target gateway provider (Cashfree or Razorpay)
+    const planAmount = trustedPlan.price;
+    const durationDays = trustedPlan.durationDays;
+    const billingInterval: 'monthly' | 'yearly' = trustedPlan.id === 'qorbiq_12_months' ? 'yearly' : 'monthly';
+    const billingModel = 'ONE_TIME';
+    const purchaseType = trustedPlan.id === 'qorbiq_12_months' ? 'YEARLY_PAY_ONCE' : 'MONTHLY_PAY_ONCE';
+
+    // Resolve target gateway provider (Cashfree default)
     const selectedGateway = (gateway || paymentGatewayRegistry.getActiveGatewayName()).toUpperCase() as 'CASHFREE' | 'RAZORPAY';
     const provider = paymentGatewayRegistry.getProvider(selectedGateway);
 
-    // Server-side Order / Subscription creation
+    // Requirement 2: Backend creates the Cashfree order using the selected plan's exact amount
     const providerIntent = await provider.createSubscriptionIntent({
-      planId: 'reviewflow_unlimited',
+      planId: trustedPlan.id,
+      planName: trustedPlan.name,
+      durationDays,
+      billingType: 'One-Time Payment',
+      renewal: 'Manual',
       billingInterval,
       amount: planAmount,
-      currency: currentPlan.currency || 'INR',
+      currency: trustedPlan.currency,
       userId: user.uid,
       customerEmail: user.email,
       customerName: user.displayName || user.name,
       customerPhone: user.phone,
       idempotencyKey,
-      billingModel: billingModel || (selectedGateway === 'CASHFREE' ? 'SUBSCRIPTION' : undefined),
-      businessName: 'Qorbiq AI Subscription'
+      billingModel,
+      purchaseType,
+      autoRenew: false,
+      businessName: `${trustedPlan.name} (One-Time Payment)`
     });
 
-    // Store pending payment in database (Requirement 11)
+    // Store pending payment in database
     const payment = reviewFlowStore.createPaymentIntent({
       userId: user.uid,
-      planId: 'reviewflow_unlimited',
+      planId: trustedPlan.id,
       amount: planAmount,
-      currency: currentPlan.currency || 'INR',
+      currency: trustedPlan.currency || 'INR',
       billingInterval,
+      billingModel,
+      purchaseType,
+      autoRenew: false,
       idempotencyKey,
       gateway: provider.name,
       razorpayOrderId: provider.name === 'RAZORPAY' ? providerIntent.orderId : undefined,
       cashfreeOrderId: provider.name === 'CASHFREE' ? providerIntent.orderId : undefined,
       cashfreeSubscriptionId: providerIntent.subscriptionId,
       cashfreePaymentSessionId: providerIntent.paymentSessionId,
+      cashfreeSubscriptionSessionId: providerIntent.subscriptionSessionId,
       cashfreeAuthLink: providerIntent.authLink,
       subscriptionId: providerIntent.subscriptionId,
+      customerName: user.displayName || user.name,
+      customerEmail: user.email,
+      businessName: trustedPlan.name,
       paymentType: 'NEW_BUSINESS_SUBSCRIPTION'
     });
 
@@ -1923,23 +1962,32 @@ reviewFlowRouter.post('/subscriptions/intent', requireAuth, async (req: Request,
       success: true,
       provider: provider.name,
       paymentId: payment.id,
-      orderId: providerIntent.orderId || payment.cashfreeOrderId || payment.razorpayOrderId,
-      subscriptionId: providerIntent.subscriptionId,
+      orderId: providerIntent.orderId || payment.cashfreeOrderId,
       paymentSessionId: providerIntent.paymentSessionId,
-      authLink: providerIntent.authLink,
       environment: providerIntent.environment,
-      amount: payment.amount,
-      currency: payment.currency,
+      amount: trustedPlan.price,
+      currency: trustedPlan.currency,
       keyId: providerIntent.keyId,
-      planId: 'reviewflow_unlimited',
-      planName: 'Qorbiq AI Unlimited',
-      billingInterval,
-      businessName: 'Qorbiq AI Subscription',
-      description: `Qorbiq AI Unlimited (${billingInterval === 'yearly' ? 'Yearly' : 'Monthly'})`
+      planId: trustedPlan.id,
+      planName: trustedPlan.name,
+      durationDays: trustedPlan.durationDays,
+      billingType: 'One-Time Payment',
+      autoRenew: false,
+      renewal: 'Manual',
+      businessName: trustedPlan.name,
+      description: `${trustedPlan.name} — ₹${trustedPlan.price} (One-Time Payment, ${trustedPlan.durationDays} Days Access)`
     });
   } catch (err: any) {
-    console.error('[Subscriptions Intent Error]', err);
-    res.status(500).json({ error: err.message || 'Failed to initialize subscription checkout.' });
+    console.error('[Subscriptions Intent Error]', {
+      message: err.message,
+      cause: err.cause?.message || err.cause,
+      code: err.code
+    });
+    const errorMsg =
+      err.message === 'fetch failed'
+        ? 'Unable to connect to Cashfree payment server. Please verify internet access.'
+        : err.message || 'Failed to initialize checkout.';
+    res.status(500).json({ error: errorMsg });
   }
 });
 
@@ -2461,6 +2509,8 @@ reviewFlowRouter.post('/businesses/:id/complete-onboarding', requireAuth, (req: 
 reviewFlowRouter.post('/billing/checkout', requireAuth, (req: Request, res: Response) => {
   const isProduction =
     process.env.NODE_ENV === 'production' ||
+    (process.env.CASHFREE_ENV || '').toLowerCase() === 'production' ||
+    (process.env.CASHFREE_ENVIRONMENT || '').toLowerCase() === 'production' ||
     process.env.CASHFREE_ENVIRONMENT === 'PRODUCTION' ||
     process.env.PAYMENT_GATEWAY_ENVIRONMENT === 'PRODUCTION';
 
@@ -2739,8 +2789,9 @@ reviewFlowRouter.get('/admin/dynamic-qr/:qrId/analytics', requireSuperAdmin, (re
 // =============================================================
 reviewFlowRouter.get('/admin/plans', requireSuperAdmin, (_req: Request, res: Response) => {
   const plan = reviewFlowStore.getPlanDefinition();
+  const plans = reviewFlowStore.getAllQorbiqPlans();
   const versions = reviewFlowStore.getPlanVersions();
-  res.json({ success: true, plan, versions });
+  res.json({ success: true, plan, plans, versions });
 });
 
 reviewFlowRouter.put('/admin/plans', requireSuperAdmin, (req: Request, res: Response) => {
@@ -2765,9 +2816,60 @@ reviewFlowRouter.get('/admin/ai-usage', requireSuperAdmin, (req: Request, res: R
 // /super-admin/payments
 // ==========================================
 reviewFlowRouter.get('/admin/payments', requireSuperAdmin, (_req: Request, res: Response) => {
-  const payments = reviewFlowStore.getAllPayments();
+  const rawPayments = reviewFlowStore.getAllPayments();
   const subscriptions = reviewFlowStore.getSubscriptions();
-  res.json({ success: true, payments, subscriptions });
+  const invoices = reviewFlowStore.getInvoices({ pageSize: 1000 }).items;
+
+  const enrichedPayments = rawPayments.map(p => {
+    const user = p.userId ? reviewFlowStore.getUserByUid(p.userId) : null;
+    const sub = p.subscriptionId ? reviewFlowStore.getSubscriptionById(p.subscriptionId) : null;
+    const biz = p.businessId
+      ? reviewFlowStore.getBusinessById(p.businessId)
+      : (sub?.businessId ? reviewFlowStore.getBusinessById(sub.businessId) : null);
+    const inv = invoices.find(i =>
+      (p.invoiceId && i.id === p.invoiceId) ||
+      (i.paymentId === p.id) ||
+      (p.subscriptionId && i.subscriptionId === p.subscriptionId)
+    );
+
+    const billingInterval = p.billingInterval || sub?.billingInterval || (p.amount >= 2000 ? 'yearly' : 'monthly');
+    const autoRenew = p.autoRenew ?? sub?.autoRenew ?? (p.billingModel === 'SUBSCRIPTION' || Boolean(p.cashfreeSubscriptionId));
+    const billingModel = p.billingModel || sub?.billingModel || (autoRenew ? 'SUBSCRIPTION' : 'ONE_TIME');
+    const purchaseType = p.purchaseType || sub?.purchaseType || (billingInterval === 'yearly'
+      ? (autoRenew ? 'YEARLY_SUBSCRIPTION' : 'YEARLY_PAY_ONCE')
+      : (autoRenew ? 'MONTHLY_SUBSCRIPTION' : 'MONTHLY_PAY_ONCE'));
+
+    const transactionId =
+      p.cashfreePaymentId ||
+      p.razorpayPaymentId ||
+      p.cashfreeOrderId ||
+      p.razorpayOrderId ||
+      p.id;
+
+    return {
+      ...p,
+      customerName: p.customerName || user?.displayName || 'Customer',
+      customerEmail: p.customerEmail || user?.email || '',
+      businessName: p.businessName || biz?.businessName || (p.businessId ? `Business #${p.businessId.slice(-6)}` : 'Provisioned Workspace'),
+      planName: 'Qorbiq AI Unlimited',
+      billingInterval,
+      billingModel,
+      purchaseType,
+      autoRenew,
+      transactionId,
+      invoiceId: p.invoiceId || inv?.id,
+      invoiceNumber: p.invoiceNumber || inv?.invoiceNumber,
+      accessStart: sub?.currentPeriodStart || p.verifiedAt || p.createdAt,
+      accessExpiry: sub?.currentPeriodEnd || null,
+      nextRenewal: autoRenew ? (sub?.nextRenewalDate || sub?.renewalDate || sub?.currentPeriodEnd || null) : null,
+      cancellationStatus: (sub?.status || '').toUpperCase() === 'CANCELLED'
+        ? 'CANCELLED'
+        : ((sub?.status || '').toUpperCase() === 'EXPIRED' ? 'EXPIRED' : (sub?.status || 'ACTIVE')),
+      subscriptionStatus: sub?.status || (p.status === 'PAID' ? 'ACTIVE' : 'PENDING')
+    };
+  });
+
+  res.json({ success: true, payments: enrichedPayments, subscriptions });
 });
 
 reviewFlowRouter.post('/admin/payments/:paymentId/refund', requireSuperAdmin, async (req: Request, res: Response) => {
@@ -2895,6 +2997,27 @@ reviewFlowRouter.get('/admin/invoices/:id/pdf', requireSuperAdmin, (req: Request
   if (!invoice) {
     return res.status(404).send('Invoice not found.');
   }
+
+  // Only verified successful payments can generate downloadable PDF invoices
+  const isPaid = invoice.paymentStatus === 'PAID' || invoice.status === 'PAID';
+  if (!isPaid) {
+    return res.status(403).json({
+      error: 'PAYMENT_NOT_VERIFIED',
+      message: 'Downloadable PDF invoices are only available for verified successful payments.'
+    });
+  }
+
+  if (req.query.download === '1' || req.query.download === 'true') {
+    try {
+      const pdfBuffer = generateInvoicePdfBuffer(invoice);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${invoice.invoiceNumber}.pdf"`);
+      return res.send(pdfBuffer);
+    } catch (err: any) {
+      return res.status(403).json({ error: err.message || 'Failed to generate PDF invoice.' });
+    }
+  }
+
   const html = generateInvoiceHtml(invoice);
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(html);
@@ -2942,6 +3065,27 @@ reviewFlowRouter.get('/invoices/:id/pdf', requireAuth, (req: Request, res: Respo
   if (!invoice || (invoice.userId !== user.uid && user.role !== 'SUPER_ADMIN')) {
     return res.status(404).send('Invoice not found or access denied.');
   }
+
+  // Only verified successful payments can generate downloadable PDF invoices
+  const isPaid = invoice.paymentStatus === 'PAID' || invoice.status === 'PAID';
+  if (!isPaid) {
+    return res.status(403).json({
+      error: 'PAYMENT_NOT_VERIFIED',
+      message: 'Downloadable PDF invoices are only available for verified successful payments.'
+    });
+  }
+
+  if (req.query.download === '1' || req.query.download === 'true') {
+    try {
+      const pdfBuffer = generateInvoicePdfBuffer(invoice);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${invoice.invoiceNumber}.pdf"`);
+      return res.send(pdfBuffer);
+    } catch (err: any) {
+      return res.status(403).json({ error: err.message || 'Failed to generate PDF invoice.' });
+    }
+  }
+
   const html = generateInvoiceHtml(invoice);
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(html);

@@ -52,14 +52,14 @@ export const SuperAdminPlansPage: React.FC = () => {
   const [success, setSuccess] = useState<string | null>(null);
 
   // Form edit state
-  const [name, setName] = useState('Qorbiq AI Unlimited');
-  const [monthlyPrice, setMonthlyPrice] = useState(299);
+  const [name, setName] = useState('Qorbiq AI');
+  const [monthlyPrice, setMonthlyPrice] = useState(1800);
   const [yearlyPrice, setYearlyPrice] = useState(2999);
   const [currency, setCurrency] = useState('INR');
-  const [description, setDescription] = useState('');
+  const [description, setDescription] = useState('Official Qorbiq AI Plans: 6 Months (₹1,800) and 12 Months (₹2,999) One-Time Payments.');
   const [trialDays, setTrialDays] = useState(0);
-  const [discount, setDiscount] = useState(0);
-  const [paymentGateway, setPaymentGateway] = useState('razorpay');
+  const [discount, setDiscount] = useState(16.7);
+  const [paymentGateway, setPaymentGateway] = useState('cashfree');
   const [planStatus, setPlanStatus] = useState<'ACTIVE' | 'ARCHIVED'>('ACTIVE');
   const [featuresText, setFeaturesText] = useState('');
 
@@ -84,14 +84,14 @@ export const SuperAdminPlansPage: React.FC = () => {
       setVersions(data.versions || []);
 
       if (data.plan) {
-        setName(data.plan.name || 'Qorbiq AI Unlimited');
-        setMonthlyPrice(data.plan.monthlyPrice ?? 299);
+        setName(data.plan.name || 'Qorbiq AI');
+        setMonthlyPrice(data.plan.monthlyPrice ?? 1800);
         setYearlyPrice(data.plan.yearlyPrice ?? 2999);
         setCurrency(data.plan.currency || 'INR');
         setDescription(data.plan.description || '');
         setTrialDays(data.plan.trialDays ?? 0);
-        setDiscount(data.plan.discount ?? 0);
-        setPaymentGateway(data.plan.paymentGateway || 'razorpay');
+        setDiscount(data.plan.discount ?? 16.7);
+        setPaymentGateway(data.plan.paymentGateway || 'cashfree');
         setPlanStatus(data.plan.planStatus || 'ACTIVE');
         setFeaturesText((data.plan.features || []).join('\n'));
       }
@@ -249,7 +249,7 @@ export const SuperAdminPlansPage: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="p-4 rounded-xl bg-blue-50/50 border border-blue-100 space-y-2">
                 <label className="block text-xs font-bold uppercase tracking-wider text-blue-700">
-                  Monthly Price ({currency === 'INR' ? '₹' : '$'})
+                  Half-Yearly Price — 180 Days ({currency === 'INR' ? '₹' : '$'})
                 </label>
                 <input
                   type="number"
@@ -260,12 +260,12 @@ export const SuperAdminPlansPage: React.FC = () => {
                   className="w-full px-3.5 py-2 rounded-lg border border-blue-200 text-base font-bold text-slate-900 focus:outline-hidden focus:border-blue-600 bg-white"
                   required
                 />
-                <span className="text-[11px] text-blue-600/80 block">Default: ₹299/month</span>
+                <span className="text-[11px] text-blue-600/80 block">Default: ₹1,800 INR (180 Days)</span>
               </div>
 
               <div className="p-4 rounded-xl bg-emerald-50/50 border border-emerald-100 space-y-2">
                 <label className="block text-xs font-bold uppercase tracking-wider text-emerald-700">
-                  Yearly Price ({currency === 'INR' ? '₹' : '$'})
+                  Yearly Price — 365 Days ({currency === 'INR' ? '₹' : '$'})
                 </label>
                 <input
                   type="number"
@@ -276,7 +276,7 @@ export const SuperAdminPlansPage: React.FC = () => {
                   className="w-full px-3.5 py-2 rounded-lg border border-emerald-200 text-base font-bold text-slate-900 focus:outline-hidden focus:border-emerald-600 bg-white"
                   required
                 />
-                <span className="text-[11px] text-emerald-600/80 block">Default: ₹2,999/year</span>
+                <span className="text-[11px] text-emerald-600/80 block">Default: ₹2,999 INR (365 Days)</span>
               </div>
             </div>
 

@@ -22,7 +22,7 @@ export class CashfreeProvider implements IPaymentGatewayProvider {
   }
 
   private getEnvironment(): 'sandbox' | 'production' {
-    const env = (process.env.CASHFREE_ENV || 'sandbox').toLowerCase().trim();
+    const env = (process.env.CASHFREE_ENV || process.env.CASHFREE_ENVIRONMENT || 'sandbox').toLowerCase().trim();
     return env === 'production' ? 'production' : 'sandbox';
   }
 
@@ -96,26 +96,9 @@ export class CashfreeProvider implements IPaymentGatewayProvider {
     const customerName = (options.customerName || 'Subscriber').trim();
     const appBaseUrl = this.getAppBaseUrl();
 
-    // Prefer Recurring Subscription if billingModel is 'SUBSCRIPTION' or when configured
-    const useSubscriptionModel = options.billingModel === 'SUBSCRIPTION';
-
-    if (useSubscriptionModel) {
-      try {
-        const subResult = await this.createRecurringSubscription(options, {
-          paymentId,
-          customerEmail,
-          customerPhone,
-          customerName,
-          appBaseUrl
-        });
-        return subResult;
-      } catch (subErr: any) {
-        console.warn('[CashfreeProvider] Subscription creation fallback notice:', subErr.message);
-        // If merchant account doesn't have Subscriptions enabled, fallback to Payment Gateway Order
-      }
-    }
-
-    // Default & Direct: Cashfree Payment Gateway Order
+    // Qorbiq AI One-Time Payment Plans:
+    // Both plans (Qorbiq AI – 6 Months ₹1,800 and Qorbiq AI – 12 Months ₹2,999) are strictly One-Time Payments.
+    // Recurring mandates, auto-renewals, and subscription plans are strictly disabled.
     return await this.createPgOrder(options, {
       paymentId,
       customerEmail,
@@ -140,15 +123,30 @@ export class CashfreeProvider implements IPaymentGatewayProvider {
     }
   ): Promise<PaymentIntentResult> {
     const orderId = 'order_cf_' + crypto.randomBytes(8).toString('hex');
-    const returnUrl = options.returnUrl || `${meta.appBaseUrl}/billing/return?order_id={order_id}&payment_id=${meta.paymentId}`;
-    const notifyUrl = `${meta.appBaseUrl}/api/webhooks/cashfree`;
+    let returnUrl = options.returnUrl || `${meta.appBaseUrl}/billing/return?order_id={order_id}&payment_id=${meta.paymentId}`;
+    let notifyUrl = `${meta.appBaseUrl}/api/webhooks/cashfree`;
+
+    // Cashfree Production API strictly enforces HTTPS for all return and webhook URLs
+    if (this.getEnvironment() === 'production') {
+      if (returnUrl.startsWith('http://')) {
+        returnUrl = returnUrl.replace(/^http:\/\//i, 'https://');
+      }
+      if (notifyUrl.startsWith('http://')) {
+        notifyUrl = notifyUrl.replace(/^http:\/\//i, 'https://');
+      }
+    }
+
+    const planTitle = options.planName || (options.billingInterval === 'yearly' ? 'Qorbiq AI – 12 Months' : 'Qorbiq AI – 6 Months');
+    const durationDays = options.durationDays || (options.billingInterval === 'yearly' ? 365 : 180);
+
+    const sanitizedCustomerId = ('cust_' + options.userId.replace(/[^a-zA-Z0-9_-]/g, '')).substring(0, 50);
 
     const requestBody = {
       order_id: orderId,
       order_amount: Math.round(options.amount * 100) / 100,
       order_currency: options.currency || 'INR',
       customer_details: {
-        customer_id: `cust_${options.userId.substring(0, 20)}`,
+        customer_id: sanitizedCustomerId,
         customer_email: meta.customerEmail,
         customer_phone: meta.customerPhone,
         customer_name: meta.customerName
@@ -158,29 +156,56 @@ export class CashfreeProvider implements IPaymentGatewayProvider {
         notify_url: notifyUrl,
         payment_methods: 'cc,dc,upi,nb,app'
       },
-      order_note: `Qorbiq AI Subscription (${options.billingInterval})`,
+      order_note: `${planTitle} (${durationDays} Days Access - One-Time Payment)`,
       order_tags: {
         userId: options.userId,
         planId: options.planId,
-        billingInterval: options.billingInterval,
+        durationDays: String(durationDays),
         paymentId: meta.paymentId,
         idempotencyKey: options.idempotencyKey || ''
       }
     };
 
-    const response = await fetch(`${this.getBaseUrl()}/pg/orders`, {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify(requestBody)
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${this.getBaseUrl()}/pg/orders`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify(requestBody)
+      });
+    } catch (networkErr: any) {
+      console.error('[CashfreeProvider] Network/fetch error while calling Cashfree /pg/orders:', {
+        message: networkErr.message,
+        code: networkErr.code,
+        cause: networkErr.cause?.message || networkErr.cause,
+        endpoint: `${this.getBaseUrl()}/pg/orders`
+      });
+      throw new Error(
+        `Unable to reach Cashfree Payment Gateway (${networkErr.code || networkErr.message || 'Network error'}). Please verify server internet connectivity.`
+      );
+    }
 
-    const data: any = await response.json();
+    let data: any;
+    try {
+      data = await response.json();
+    } catch (parseErr: any) {
+      console.error('[CashfreeProvider] Non-JSON response from Cashfree API:', response.status);
+      throw new Error(`Cashfree Payment Gateway returned unparseable response (HTTP ${response.status}).`);
+    }
 
     if (!response.ok || data.type === 'error' || data.code) {
-      console.error('[CashfreeProvider] Create order error response:', data);
+      console.error('[CashfreeProvider] Cashfree API error response:', {
+        status: response.status,
+        code: data.code,
+        type: data.type,
+        message: data.message
+      });
       const errMsg = data.message || data.error?.message || `Cashfree Order API failed with status ${response.status}`;
       throw new Error(errMsg);
     }
+
+    const billingModel = 'ONE_TIME';
+    const purchaseType = options.purchaseType || (options.billingInterval === 'yearly' ? 'YEARLY_PAY_ONCE' : 'MONTHLY_PAY_ONCE');
 
     return {
       provider: 'CASHFREE',
@@ -192,9 +217,16 @@ export class CashfreeProvider implements IPaymentGatewayProvider {
       currency: options.currency || 'INR',
       keyId: this.getPublishableKey(),
       planId: options.planId,
+      planName: planTitle,
+      durationDays,
+      billingType: 'One-Time Payment',
+      renewal: 'Manual',
       billingInterval: options.billingInterval,
+      billingModel,
+      purchaseType,
+      autoRenew: false,
       businessName: options.businessName || 'Qorbiq AI Subscription',
-      description: `Qorbiq AI Unlimited (${options.billingInterval === 'yearly' ? 'Yearly' : 'Monthly'})`
+      description: `${planTitle} — ₹${options.amount} (One-Time Payment, ${durationDays} Days Access)`
     };
   }
 
@@ -229,8 +261,8 @@ export class CashfreeProvider implements IPaymentGatewayProvider {
           plan_intervals: 1,
           plan_interval_type: options.billingInterval === 'yearly' ? 'YEAR' : 'MONTH',
           plan_note: options.billingInterval === 'yearly'
-            ? 'Qorbiq AI Yearly Subscription (₹2,999/yr)'
-            : 'Qorbiq AI Monthly Subscription (₹299/mo)'
+            ? 'Qorbiq AI Yearly Plan Rs 2999 per year'
+            : 'Qorbiq AI Monthly Plan Rs 299 per month'
         })
       });
       if (!planRes.ok && planRes.status !== 409) {
@@ -265,7 +297,9 @@ export class CashfreeProvider implements IPaymentGatewayProvider {
         return_url: returnUrl,
         notification_channel: ['EMAIL', 'SMS']
       },
-      subscription_note: `Qorbiq AI ${options.billingInterval} subscription`
+      subscription_note: options.billingInterval === 'yearly'
+        ? 'Qorbiq AI yearly auto renewing subscription'
+        : 'Qorbiq AI monthly auto renewing subscription'
     };
 
     const subRes = await fetch(`${this.getBaseUrl()}/pg/subscriptions`, {
@@ -280,10 +314,15 @@ export class CashfreeProvider implements IPaymentGatewayProvider {
       throw new Error(subData.message || 'Failed to create Cashfree Subscription.');
     }
 
+    const billingModel = 'SUBSCRIPTION';
+    const purchaseType = options.purchaseType || (options.billingInterval === 'yearly' ? 'YEARLY_SUBSCRIPTION' : 'MONTHLY_SUBSCRIPTION');
+
     return {
       provider: 'CASHFREE',
       paymentId: meta.paymentId,
       subscriptionId: subData.subscription_id || subscriptionId,
+      subscriptionSessionId: subData.subscription_session_id,
+      paymentSessionId: subData.subscription_session_id,
       authLink: subData.auth_link,
       environment: this.getEnvironment(),
       amount: options.amount,
@@ -291,8 +330,11 @@ export class CashfreeProvider implements IPaymentGatewayProvider {
       keyId: this.getPublishableKey(),
       planId: options.planId,
       billingInterval: options.billingInterval,
+      billingModel,
+      purchaseType,
+      autoRenew: true,
       businessName: options.businessName || 'Qorbiq AI Subscription',
-      description: `Qorbiq AI Unlimited (${options.billingInterval})`
+      description: `Qorbiq AI Unlimited ${options.billingInterval === 'yearly' ? 'Yearly' : 'Monthly'} (Auto-Renew Subscription)`
     };
   }
 
@@ -533,7 +575,9 @@ export class CashfreeProvider implements IPaymentGatewayProvider {
           .update(signedPayload)
           .digest('base64');
 
-        if (crypto.timingSafeEqual(Buffer.from(signature, 'utf8'), Buffer.from(computedSignature, 'utf8'))) {
+        const sigBuf = Buffer.from(signature, 'utf8');
+        const compBuf = Buffer.from(computedSignature, 'utf8');
+        if (sigBuf.length === compBuf.length && crypto.timingSafeEqual(sigBuf, compBuf)) {
           return true;
         }
       }

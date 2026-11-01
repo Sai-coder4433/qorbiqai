@@ -401,16 +401,42 @@ export type SubscriptionLifecycleStatus =
   | 'trialing'
   | 'suspended';
 
+export type QorbiqPlanId = 'qorbiq_6_months' | 'qorbiq_12_months';
+
+export interface QorbiqPlanConfig {
+  id: QorbiqPlanId;
+  name: string; // 'Qorbiq AI – 6 Months' | 'Qorbiq AI – 12 Months'
+  price: number; // 1800 | 2999
+  currency: 'INR';
+  durationDays: number; // 180 | 365
+  billingType: 'One-Time Payment';
+  autoRenew: false;
+  renewal: 'Manual';
+  description: string;
+  tagline: string;
+  features: string[];
+  discount?: number;
+}
+
 export interface ReviewFlowSubscription {
   id: string; // subscriptionId
   ownerUid: string;
   userId?: string; // Firebase UID alias
   businessId?: string; // The one business linked to this subscription
-  planId: 'reviewflow_unlimited' | string;
-  planName: string; // 'ReviewFlow Unlimited'
+  planId: QorbiqPlanId | 'reviewflow_unlimited' | string;
+  planName: string; // 'Qorbiq AI – 6 Months' | 'Qorbiq AI – 12 Months'
   planVersion: number; // e.g. 1, 2
-  price: number; // Locked pricing for this subscription (e.g. 299 or 2999)
+  price: number; // Locked pricing for this subscription (1800 or 2999)
+  durationDays?: number; // 180 or 365
+  entitlementStartDate?: string;
+  entitlementExpiryDate?: string;
+  billingType?: 'One-Time Payment' | string;
+  renewal?: 'Manual' | string;
+  orderId?: string;
+  paymentId?: string;
   billingInterval: 'monthly' | 'yearly';
+  billingModel?: 'ONE_TIME' | 'SUBSCRIPTION';
+  purchaseType?: 'MONTHLY_PAY_ONCE' | 'MONTHLY_SUBSCRIPTION' | 'YEARLY_PAY_ONCE' | 'YEARLY_SUBSCRIPTION';
   provider?: 'RAZORPAY' | 'CASHFREE' | string;
   providerSubscriptionId?: string;
   cashfreeSubscriptionId?: string;
@@ -422,7 +448,8 @@ export interface ReviewFlowSubscription {
   currency: string;
   currentPeriodStart?: string;
   currentPeriodEnd: string;
-  renewalDate?: string;
+  renewalDate?: string | null;
+  nextRenewalDate?: string | null;
   autoRenew?: boolean;
   renewalCount?: number;
   haltReason?: string;
@@ -572,15 +599,30 @@ export interface ReviewFlowPayment {
   cashfreePaymentId?: string;
   cashfreeSubscriptionId?: string;
   cashfreePaymentSessionId?: string;
+  cashfreeSubscriptionSessionId?: string;
   cashfreeAuthLink?: string;
   amount: number;
   currency: string;
   status: 'PENDING' | 'AUTHORIZED' | 'PAID' | 'FAILED' | 'REFUNDED' | 'CANCELLED' | 'HALTED';
   paymentType: 'NEW_BUSINESS_SUBSCRIPTION' | 'CREDIT_PURCHASE' | 'SUBSCRIPTION_RENEWAL';
+  billingModel?: 'ONE_TIME' | 'SUBSCRIPTION';
+  purchaseType?: 'MONTHLY_PAY_ONCE' | 'MONTHLY_SUBSCRIPTION' | 'YEARLY_PAY_ONCE' | 'YEARLY_SUBSCRIPTION';
+  autoRenew?: boolean;
   planId: string;
+  planName?: string;
+  durationDays?: number;
+  billingType?: 'One-Time Payment' | string;
+  renewal?: 'Manual' | string;
+  entitlementStartDate?: string;
+  entitlementExpiryDate?: string;
   planVersion?: number;
   billingInterval?: 'monthly' | 'yearly';
   idempotencyKey: string;
+  customerName?: string;
+  customerEmail?: string;
+  businessName?: string;
+  invoiceId?: string;
+  invoiceNumber?: string;
   refundId?: string;
   refundReason?: string;
   refundAmount?: number;
@@ -798,6 +840,10 @@ export interface ReviewFlowInvoice {
   gateway?: string;
   paymentReference: string;
   transactionId?: string;
+  billingInterval?: 'monthly' | 'yearly';
+  billingModel?: 'ONE_TIME' | 'SUBSCRIPTION';
+  purchaseType?: 'MONTHLY_PAY_ONCE' | 'MONTHLY_SUBSCRIPTION' | 'YEARLY_PAY_ONCE' | 'YEARLY_SUBSCRIPTION';
+  autoRenew?: boolean;
   pdfUrl?: string;
   notes?: string;
   status: 'ISSUED' | 'REFUNDED' | 'CANCELLED' | 'PAID';

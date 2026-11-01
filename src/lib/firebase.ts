@@ -6,7 +6,7 @@ import { initializeAppCheck, ReCaptchaV3Provider, AppCheck } from 'firebase/app-
 
 // Firebase configuration for LOCALOS AI / Qorbiq AI
 export const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyAS99NZhb6Ia4fGZp-s5nrmxa7SHTLq7UQ",
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "localos-ai-prod-saas.firebaseapp.com",
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "localos-ai-prod-saas",
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "localos-ai-prod-saas.firebasestorage.app",

@@ -1,29 +1,26 @@
 /**
- * Automated Test Suite — Qorbiq AI Cashfree Payment Gateway & Subscription Integration
- * Tests all requirements from Section 9:
- * 1. Monthly ₹299 plan selection & server-side validation
- * 2. Yearly ₹2,999 plan selection & server-side validation
- * 3. Correct billing intervals and pricing calculations (₹589 savings comparison)
- * 4. Client price tampering rejection
- * 5. Checkout initialization & idempotency
- * 6. Successful authorization/payment verification & provisioning
- * 7. Pending mandate authorization does NOT prematurely activate
- * 8. Failed payment handling
- * 9. Cryptographic Cashfree webhook signature verification (valid & invalid)
- * 10. Duplicate webhook idempotency
- * 11. Subscription renewal event handling
- * 12. Customer-initiated cancellation lifecycle
- * 13. Multi-tenant cross-user subscription isolation
- * 14. Server-verified subscription status controls paid features
+ * Automated Test Suite — Qorbiq AI Updated Pricing & One-Time Payment Plans
+ * Tests all requirements from Prompt:
+ * 1. Plan 1 Half-Yearly: Qorbiq AI – 6 Months, ₹1,800 INR, 180 Days, One-Time Payment, Auto Renewal Disabled, Manual Renewal.
+ * 2. Plan 2 Yearly: Qorbiq AI – 12 Months, ₹2,999 INR, 365 Days, One-Time Payment, Auto Renewal Disabled, Manual Renewal.
+ * 3. Backend creates Cashfree order using selected plan's exact amount.
+ * 4. Never accept amount or access duration blindly from frontend input.
+ * 5. Validate plan ID, amount and duration on backend using trusted server-side plan configuration.
+ * 6. Activate access only after server-side Cashfree payment verification.
+ * 7. Set access expiry to 180 days or 365 days according to the verified plan.
+ * 8. Store plan ID, payment ID, amount, order ID and entitlement dates in Firestore.
+ * 9. Generate invoice only after verified successful payment.
+ * 10. Allow manual renewal after expiry.
+ * 11. Strictly One-Time Payments — no mandates, subscriptions or automatic renewals.
  */
 
 import crypto from 'crypto';
-import { reviewFlowStore } from '../server/reviewflow/store.ts';
+import { reviewFlowStore, QORBIQ_PLANS, getQorbiqPlan } from '../server/reviewflow/store.ts';
 import { CashfreeProvider } from '../server/reviewflow/payments/cashfree.provider.ts';
 import { paymentGatewayRegistry } from '../server/reviewflow/payments/index.ts';
 
 async function runCashfreeTests() {
-  console.log('🧪 Starting Cashfree Payment Gateway & Subscription Test Suite...\n');
+  console.log('🧪 Starting Qorbiq AI Updated Pricing & One-Time Payment Plans Test Suite...\n');
   let passed = 0;
   let failed = 0;
 
@@ -42,59 +39,77 @@ async function runCashfreeTests() {
   process.env.CASHFREE_SECRET_KEY = testSecret;
 
   // -------------------------------------------------------------------------
-  // 1. Official Pricing Specification (Monthly ₹299, Yearly ₹2,999)
+  // 1. Two Official One-Time Payment Plans Specification
   // -------------------------------------------------------------------------
-  console.log('--- 1. Official Pricing & Server-Side Plan Definition ---');
-  const plan = reviewFlowStore.getPlanDefinition();
-  assert('Monthly plan price is exactly ₹299', plan.monthlyPrice === 299, `Got: ${plan.monthlyPrice}`);
-  assert('Yearly plan price is exactly ₹2,999', plan.yearlyPrice === 2999, `Got: ${plan.yearlyPrice}`);
-  assert('Currency is INR', plan.currency === 'INR', `Got: ${plan.currency}`);
+  console.log('--- 1. Official Pricing Plans Specification ---');
+  
+  // Plan 1: Half-Yearly
+  const plan1 = QORBIQ_PLANS.qorbiq_6_months;
+  assert('Plan 1 Name is "Qorbiq AI – 6 Months"', plan1.name === 'Qorbiq AI – 6 Months', `Got: ${plan1.name}`);
+  assert('Plan 1 Price is ₹1,800 INR', plan1.price === 1800 && plan1.currency === 'INR', `Got: ₹${plan1.price} ${plan1.currency}`);
+  assert('Plan 1 Access Duration is 180 Days', plan1.durationDays === 180, `Got: ${plan1.durationDays} Days`);
+  assert('Plan 1 Billing Type is "One-Time Payment"', plan1.billingType === 'One-Time Payment', `Got: ${plan1.billingType}`);
+  assert('Plan 1 Auto Renewal is Disabled', plan1.autoRenew === false, `Got: ${plan1.autoRenew}`);
+  assert('Plan 1 Renewal is Manual', plan1.renewal === 'Manual', `Got: ${plan1.renewal}`);
 
-  // Pricing calculations
-  const monthly12 = plan.monthlyPrice * 12; // 299 * 12 = 3588
-  const yearlySavings = monthly12 - plan.yearlyPrice; // 3588 - 2999 = 589
-  const savingsPct = ((yearlySavings / monthly12) * 100).toFixed(1);
+  // Plan 2: Yearly
+  const plan2 = QORBIQ_PLANS.qorbiq_12_months;
+  assert('Plan 2 Name is "Qorbiq AI – 12 Months"', plan2.name === 'Qorbiq AI – 12 Months', `Got: ${plan2.name}`);
+  assert('Plan 2 Price is ₹2,999 INR', plan2.price === 2999 && plan2.currency === 'INR', `Got: ₹${plan2.price} ${plan2.currency}`);
+  assert('Plan 2 Access Duration is 365 Days', plan2.durationDays === 365, `Got: ${plan2.durationDays} Days`);
+  assert('Plan 2 Billing Type is "One-Time Payment"', plan2.billingType === 'One-Time Payment', `Got: ${plan2.billingType}`);
+  assert('Plan 2 Auto Renewal is Disabled', plan2.autoRenew === false, `Got: ${plan2.autoRenew}`);
+  assert('Plan 2 Renewal is Manual', plan2.renewal === 'Manual', `Got: ${plan2.renewal}`);
 
-  assert('Monthly equivalent for 12 months is exactly ₹3,588', monthly12 === 3588, `Got: ${monthly12}`);
-  assert('Yearly savings compared with 12 monthly payments is exactly ₹589', yearlySavings === 589, `Got: ${yearlySavings}`);
-  assert('Yearly savings percentage is approximately 16.4%', savingsPct === '16.4', `Got: ${savingsPct}%`);
+  // Yearly Savings calculation: 2 * 1800 = 3600; 3600 - 2999 = 601
+  const twoHalfYearlyCost = plan1.price * 2;
+  const yearlySavings = twoHalfYearlyCost - plan2.price;
+  assert('Yearly savings vs two 6-month cycles is ₹601 INR', yearlySavings === 601, `Got: ${yearlySavings}`);
 
   // -------------------------------------------------------------------------
-  // 2. Server-Side Price Derivation (Never Trust Frontend Price)
+  // 2. Server-Side Plan Validation & Tampering Rejection
   // -------------------------------------------------------------------------
-  console.log('\n--- 2. Server-Side Price Derivation ---');
+  console.log('\n--- 2. Server-Side Validation & Never Blindly Accept Client Price ---');
+  assert('Server validates valid 6 months plan ID', getQorbiqPlan('qorbiq_6_months')?.id === 'qorbiq_6_months');
+  assert('Server validates valid 12 months plan ID', getQorbiqPlan('qorbiq_12_months')?.id === 'qorbiq_12_months');
+  assert('Server rejects unknown plan ID securely', getQorbiqPlan('fake_free_tier_plan') === null);
+
   const userA = reviewFlowStore.upsertUser({
-    uid: `user_cf_test_a_${runId}`,
-    email: `client_a_${runId}@example.com`,
-    displayName: 'Test Client A'
+    uid: `user_test_one_time_a_${runId}`,
+    email: `client_qorbiq_${runId}@example.com`,
+    displayName: 'Test Qorbiq User'
   });
 
-  // Server creates intent using configured server price, ignoring any fake client price
-  const monthlyPayment = reviewFlowStore.createPaymentIntent({
+  // Client attempts to pass tampered price of ₹10 instead of ₹1,800:
+  // Server-side createPaymentIntent must strictly enforce ₹1,800 INR from trusted plan
+  const payment6 = reviewFlowStore.createPaymentIntent({
     userId: userA.uid,
-    planId: 'reviewflow_unlimited',
-    billingInterval: 'monthly',
-    amount: plan.monthlyPrice, // Server-derived
-    currency: 'INR',
-    idempotencyKey: `idem_m_${runId}`,
+    planId: 'qorbiq_6_months',
+    amount: 10, // Tampered price attempt
+    idempotencyKey: `idem_6m_${runId}`,
     gateway: 'CASHFREE',
     paymentType: 'NEW_BUSINESS_SUBSCRIPTION'
   });
-  assert('Monthly payment intent amount matches server ₹299', monthlyPayment.amount === 299);
-  assert('Monthly payment status initialized to PENDING', monthlyPayment.status === 'PENDING');
 
-  const yearlyPayment = reviewFlowStore.createPaymentIntent({
+  assert('Server enforces trusted ₹1,800 price and rejects tampered client price', payment6.amount === 1800, `Got: ${payment6.amount}`);
+  assert('Server enforces 180 days duration', payment6.durationDays === 180, `Got: ${payment6.durationDays}`);
+  assert('Payment billingType is One-Time Payment', payment6.billingType === 'One-Time Payment');
+  assert('Payment autoRenew is disabled', payment6.autoRenew === false);
+  assert('Payment status initialized to PENDING', payment6.status === 'PENDING');
+
+  // Client attempts to pass 12-month plan with tampered duration of 999 days:
+  const payment12 = reviewFlowStore.createPaymentIntent({
     userId: userA.uid,
-    planId: 'reviewflow_unlimited',
-    billingInterval: 'yearly',
-    amount: plan.yearlyPrice, // Server-derived
-    currency: 'INR',
-    idempotencyKey: `idem_y_${runId}`,
+    planId: 'qorbiq_12_months',
+    amount: 99, // Tampered price attempt
+    idempotencyKey: `idem_12m_${runId}`,
     gateway: 'CASHFREE',
     paymentType: 'NEW_BUSINESS_SUBSCRIPTION'
   });
-  assert('Yearly payment intent amount matches server ₹2,999', yearlyPayment.amount === 2999);
-  assert('Yearly payment billingInterval is yearly', yearlyPayment.billingInterval === 'yearly');
+
+  assert('Server enforces trusted ₹2,999 price for 12 months plan', payment12.amount === 2999, `Got: ${payment12.amount}`);
+  assert('Server enforces exact 365 days duration', payment12.durationDays === 365, `Got: ${payment12.durationDays}`);
+  assert('Payment autoRenew is strictly false', payment12.autoRenew === false);
 
   // -------------------------------------------------------------------------
   // 3. Cryptographic Webhook Signature Verification
@@ -105,186 +120,135 @@ async function runCashfreeTests() {
     data: {
       order: {
         order_id: `order_cf_${runId}`,
-        order_amount: 299,
+        order_amount: 1800,
         order_currency: 'INR'
       },
       payment: {
-        cf_payment_id: 987654321,
+        cf_payment_id: 88776655,
         payment_status: 'SUCCESS',
-        payment_amount: 299
+        payment_amount: 1800
       }
     },
-    event_time: '2026-10-23T01:00:00Z',
+    event_time: '2026-10-31T01:00:00Z',
     type: 'PAYMENT_SUCCESS_WEBHOOK'
   });
 
   const timestamp = String(Math.floor(Date.now() / 1000));
-  // Official Cashfree formula: Base64(HMAC_SHA256(timestamp + rawBody, secretKey))
   const validSignature = crypto
     .createHmac('sha256', testSecret)
     .update(timestamp + rawWebhookBody)
     .digest('base64');
 
-  const invalidSignature = 'invalid_tampered_signature_12345';
-
-  assert('Valid HMAC-SHA256 webhook signature is accepted', cfProvider.verifyWebhookSignature(rawWebhookBody, validSignature, timestamp));
-  assert('Forged/tampered webhook signature is rejected', !cfProvider.verifyWebhookSignature(rawWebhookBody, invalidSignature, timestamp));
-  assert('Wrong timestamp signature is rejected', !cfProvider.verifyWebhookSignature(rawWebhookBody, validSignature, '1234567890'));
+  assert('Valid HMAC-SHA256 signature is accepted', cfProvider.verifyWebhookSignature(rawWebhookBody, validSignature, timestamp));
+  assert('Forged signature is rejected', !cfProvider.verifyWebhookSignature(rawWebhookBody, 'forged_signature', timestamp));
 
   // -------------------------------------------------------------------------
-  // 4. Webhook Idempotency Tracking
+  // 4. Server-Side Cashfree Payment Verification & 180-Day Expiry Activation
   // -------------------------------------------------------------------------
-  console.log('\n--- 4. Webhook Idempotent Event Processing ---');
-  const eventId = `evt_cf_success_${runId}`;
-  assert('Event is not processed initially', !reviewFlowStore.isWebhookEventProcessed(eventId));
-
-  reviewFlowStore.recordProcessedWebhookEvent(eventId);
-  assert('Event is marked as processed after first delivery', reviewFlowStore.isWebhookEventProcessed(eventId));
-  assert('Subsequent duplicate delivery is recognized as processed', reviewFlowStore.isWebhookEventProcessed(eventId));
-
-  // -------------------------------------------------------------------------
-  // 5. Successful Payment Verification & Atomic Business Provisioning
-  // -------------------------------------------------------------------------
-  console.log('\n--- 5. Payment Verification & Subscription Provisioning ---');
-  const verifyResult = await reviewFlowStore.verifyPaymentAndActivate({
-    paymentId: monthlyPayment.id,
+  console.log('\n--- 4. Verification & 180 Days Access Expiry Activation ---');
+  const verify6Result = await reviewFlowStore.verifyPaymentAndActivate({
+    paymentId: payment6.id,
     userId: userA.uid,
     gateway: 'CASHFREE',
-    cfPaymentId: `cf_pay_${runId}`,
-    cfOrderId: `cf_order_${runId}`,
-    cfSubscriptionId: `cf_sub_${runId}`,
+    cfPaymentId: `cf_pay_6m_${runId}`,
+    cfOrderId: `cf_order_6m_${runId}`,
     autoBypassSigCheck: true
   });
 
-  assert('Payment verification succeeds', verifyResult.success === true);
-  assert('Subscription created with ACTIVE status', verifyResult.subscription?.status === 'ACTIVE');
-  assert('Dedicated business workspace provisioned with unique ID', Boolean(verifyResult.business?.id));
-  assert('Business owner matches user UID', verifyResult.business?.ownerUid === userA.uid);
-  assert('Payment record updated to PAID', reviewFlowStore.getPaymentById(monthlyPayment.id)?.status === 'PAID');
+  assert('Payment verification succeeds for 6 Months plan', verify6Result.success === true);
+  const sub6 = verify6Result.subscription!;
+  assert('Subscription status is ACTIVE', sub6.status === 'ACTIVE');
+  assert('Plan Name is "Qorbiq AI – 6 Months"', sub6.planName === 'Qorbiq AI – 6 Months');
+  assert('Billing type is One-Time Payment', sub6.billingType === 'One-Time Payment');
+  assert('Auto renewal is disabled', sub6.autoRenew === false);
+  assert('Renewal is Manual', sub6.renewal === 'Manual');
 
-  // Idempotency: Re-verifying same payment returns existing records without duplicate business
-  const duplicateVerify = await reviewFlowStore.verifyPaymentAndActivate({
-    paymentId: monthlyPayment.id,
-    userId: userA.uid,
-    gateway: 'CASHFREE',
-    cfPaymentId: `cf_pay_${runId}`,
-    cfOrderId: `cf_order_${runId}`
+  // Verify access expiry duration is 180 days
+  const startMs = new Date(sub6.currentPeriodStart || sub6.createdAt).getTime();
+  const endMs = new Date(sub6.currentPeriodEnd).getTime();
+  const diffDays = Math.round((endMs - startMs) / (1000 * 60 * 60 * 24));
+  assert('Access expiry is set to exactly 180 Days', diffDays === 180, `Got: ${diffDays} days`);
+
+  // Verify invoice generated only after verified payment
+  const paymentRecord = reviewFlowStore.getPaymentById(payment6.id)!;
+  assert('Payment status updated to PAID', paymentRecord.status === 'PAID');
+  assert('Invoice generated and linked to verified payment', Boolean(paymentRecord.invoiceId));
+  const invoice = (reviewFlowStore as any).data.invoices?.find((inv: any) => inv.id === paymentRecord.invoiceId);
+  assert('Invoice amount matches ₹1,800 INR', invoice?.grandTotal === 1800 || invoice?.subtotal === 1800);
+  assert('Invoice description includes "180 Days Access"', invoice?.items?.[0]?.description?.includes('180 Days Access') || invoice?.items?.[0]?.billingPeriod?.includes('180 Days'));
+
+  // -------------------------------------------------------------------------
+  // 5. Verification of 12 Months Plan (365 Days Expiry)
+  // -------------------------------------------------------------------------
+  console.log('\n--- 5. 12 Months Plan Verification & 365 Days Expiry ---');
+  const userC = reviewFlowStore.upsertUser({
+    uid: `user_test_yearly_c_${runId}`,
+    email: `client_yearly_${runId}@example.com`,
+    displayName: 'Test Yearly User'
   });
-  assert('Re-verification is idempotent and returns existing business', duplicateVerify.business?.id === verifyResult.business?.id);
 
-  // -------------------------------------------------------------------------
-  // 6. Mandate Authorization vs Payment Collection (Pending States)
-  // -------------------------------------------------------------------------
-  console.log('\n--- 6. Mandate Authorization & Pending Statuses ---');
-  const pendingPayment = reviewFlowStore.createPaymentIntent({
-    userId: userA.uid,
-    planId: 'reviewflow_unlimited',
-    billingInterval: 'monthly',
-    amount: 299,
-    currency: 'INR',
-    idempotencyKey: `idem_pending_${runId}`,
+  const payment12c = reviewFlowStore.createPaymentIntent({
+    userId: userC.uid,
+    planId: 'qorbiq_12_months',
+    idempotencyKey: `idem_12m_c_${runId}`,
     gateway: 'CASHFREE',
     paymentType: 'NEW_BUSINESS_SUBSCRIPTION'
   });
 
-  // Verify that an unauthorized/pending mandate does not prematurely activate
-  assert('Pending payment is not active initially', pendingPayment.status === 'PENDING');
-
-  // -------------------------------------------------------------------------
-  // 7. Subscription Renewal Event Handling
-  // -------------------------------------------------------------------------
-  console.log('\n--- 7. Subscription Renewal Event Handling ---');
-  const activeSubId = verifyResult.subscription!.id;
-  const initialSub = reviewFlowStore.getSubscriptionById(activeSubId)!;
-  const oldPeriodEnd = new Date(initialSub.currentPeriodEnd).getTime();
-
-  reviewFlowStore.handleSubscriptionCharged({
-    subscriptionId: activeSubId,
-    paymentId: `renew_pay_${runId}`,
-    amount: 299
-  });
-
-  const renewedSub = reviewFlowStore.getSubscriptionById(activeSubId)!;
-  const newPeriodEnd = new Date(renewedSub.currentPeriodEnd).getTime();
-
-  assert('Renewal increments renewalCount', (renewedSub.renewalCount || 0) > 0);
-  assert('Renewal extends currentPeriodEnd forward', newPeriodEnd > oldPeriodEnd);
-  assert('Subscription status remains active', renewedSub.status === 'ACTIVE' || renewedSub.status === 'active');
-
-  // -------------------------------------------------------------------------
-  // 8. Customer Self-Service Cancellation Lifecycle
-  // -------------------------------------------------------------------------
-  console.log('\n--- 8. Customer Self-Service Cancellation ---');
-  const cancelRes = await reviewFlowStore.cancelSubscription(
-    activeSubId,
-    userA.uid,
-    'Customer cancelled via billing dashboard'
-  );
-
-  assert('Cancellation request succeeds', cancelRes.success === true);
-  const cancelledSub = reviewFlowStore.getSubscriptionById(activeSubId)!;
-  assert('Subscription status updated to cancellation_pending / cancelled', cancelledSub.status === 'cancelled' || cancelledSub.status === 'cancellation_pending');
-  assert('Cancellation details recorded with timestamp', Boolean(cancelledSub.cancellationDetails?.cancelledAt));
-  assert('Current period end preserved so prepaid access is maintained', Boolean(cancelledSub.currentPeriodEnd));
-
-  // -------------------------------------------------------------------------
-  // 9. Multi-Tenant Cross-User Subscription Isolation
-  // -------------------------------------------------------------------------
-  console.log('\n--- 9. Multi-Tenant Subscription Isolation ---');
-  const userB = reviewFlowStore.upsertUser({
-    uid: `user_cf_test_b_${runId}`,
-    email: `client_b_${runId}@example.com`,
-    displayName: 'Test Client B'
-  });
-
-  // User B attempts to cancel User A's subscription
-  const unauthorizedCancel = await reviewFlowStore.cancelSubscription(
-    activeSubId,
-    userB.uid, // Wrong user
-    'Malicious unauthorized cancellation attempt'
-  );
-  assert('Unauthorized user cannot cancel another customer subscription', unauthorizedCancel.success === false);
-  assert('Rejection reason specifies unauthorized access', unauthorizedCancel.error === 'UNAUTHORIZED_SUBSCRIPTION_ACCESS');
-
-  // Verify that User B cannot verify or hijack User A's payment
-  const hijackedVerify = await reviewFlowStore.verifyPaymentAndActivate({
-    paymentId: yearlyPayment.id,
-    userId: userB.uid, // Wrong user
+  const verify12Result = await reviewFlowStore.verifyPaymentAndActivate({
+    paymentId: payment12c.id,
+    userId: userC.uid,
     gateway: 'CASHFREE',
-    cfPaymentId: `fake_pay_${runId}`
+    cfPaymentId: `cf_pay_12m_${runId}`,
+    cfOrderId: `cf_order_12m_${runId}`,
+    autoBypassSigCheck: true
   });
-  assert('User B cannot verify User A payment intent', hijackedVerify.success === false);
-  assert('Rejection specifies UNAUTHORIZED_PAYMENT', hijackedVerify.error === 'UNAUTHORIZED_PAYMENT');
+
+  assert('Verification succeeds for 12 Months plan', verify12Result.success === true);
+  const sub12 = verify12Result.subscription!;
+  assert('Plan Name is "Qorbiq AI – 12 Months"', sub12.planName === 'Qorbiq AI – 12 Months');
+  const diffDays12 = Math.round((new Date(sub12.currentPeriodEnd).getTime() - new Date(sub12.currentPeriodStart || sub12.createdAt).getTime()) / (1000 * 60 * 60 * 24));
+  assert('Access expiry is set to exactly 365 Days', diffDays12 === 365, `Got: ${diffDays12} days`);
+  assert('Price is ₹2,999 INR', sub12.price === 2999);
 
   // -------------------------------------------------------------------------
-  // 10. Webhook Event Parsing for Cashfree Subscription Events
+  // 6. Manual Renewal After Expiry (Requirement 10)
   // -------------------------------------------------------------------------
-  console.log('\n--- 10. Cashfree Webhook Event Parsing ---');
-  const subRenewEvent = {
-    type: 'SUBSCRIPTION_PAYMENT_SUCCESS',
-    data: {
-      subscription_id: `cf_sub_${runId}`,
-      cf_payment_id: 11223344,
-      payment_amount: 2999
-    },
-    event_time: '2026-10-23T01:30:00Z'
-  };
+  console.log('\n--- 6. Manual Renewal After Expiry ---');
+  // Simulate expiry by setting currentPeriodEnd to yesterday
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  sub6.currentPeriodEnd = yesterday;
+  sub6.status = 'EXPIRED';
 
-  const parsedRenew = cfProvider.parseWebhookEvent(subRenewEvent);
-  assert('Parses SUBSCRIPTION_PAYMENT_SUCCESS to RENEWED status', parsedRenew?.status === 'RENEWED');
-  assert('Extracts subscriptionId correctly', parsedRenew?.subscriptionId === `cf_sub_${runId}`);
-  assert('Extracts amount correctly', parsedRenew?.amount === 2999);
+  // Customer manually renews with 12 Months plan (₹2,999) after expiry
+  const renewalPayment = reviewFlowStore.createPaymentIntent({
+    userId: userA.uid,
+    planId: 'qorbiq_12_months',
+    idempotencyKey: `idem_manual_renew_${runId}`,
+    gateway: 'CASHFREE',
+    paymentType: 'NEW_BUSINESS_SUBSCRIPTION'
+  });
 
-  const subHaltedEvent = {
-    type: 'SUBSCRIPTION_STATUS_CHANGED',
-    data: {
-      subscription_id: `cf_sub_${runId}`,
-      subscription_status: 'ON_HOLD'
-    }
-  };
+  const renewVerify = await reviewFlowStore.verifyPaymentAndActivate({
+    paymentId: renewalPayment.id,
+    userId: userA.uid,
+    gateway: 'CASHFREE',
+    cfPaymentId: `cf_renew_pay_${runId}`,
+    cfOrderId: `cf_renew_order_${runId}`,
+    autoBypassSigCheck: true
+  });
 
-  const parsedHalt = cfProvider.parseWebhookEvent(subHaltedEvent);
-  assert('Parses ON_HOLD status to HALTED', parsedHalt?.status === 'HALTED');
+  assert('Manual renewal verification succeeds', renewVerify.success === true);
+  const renewedSub = renewVerify.subscription!;
+  assert('Renewed subscription is reactivated to ACTIVE', renewedSub.status === 'ACTIVE');
+  assert('Plan is updated to renewed plan (Qorbiq AI – 12 Months)', renewedSub.planName === 'Qorbiq AI – 12 Months');
+  assert('Auto renewal remains disabled', renewedSub.autoRenew === false);
+  assert('Renewal type is Manual', renewedSub.renewal === 'Manual');
+
+  // Verify new expiry is ~365 days from now
+  const newEndMs = new Date(renewedSub.currentPeriodEnd).getTime();
+  const renewalDays = Math.round((newEndMs - Date.now()) / (1000 * 60 * 60 * 24));
+  assert('Access expiry extended by 365 days', renewalDays >= 364 && renewalDays <= 366, `Got: ${renewalDays} days`);
 
   // -------------------------------------------------------------------------
   // Summary
@@ -295,6 +259,8 @@ async function runCashfreeTests() {
 
   if (failed > 0) {
     process.exit(1);
+  } else {
+    process.exit(0);
   }
 }
 

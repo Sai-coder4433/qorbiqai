@@ -2,22 +2,67 @@ import React, { useState, useEffect } from 'react';
 import {
   CreditCard,
   Check,
-  QrCode,
   ShieldCheck,
   RefreshCw,
   AlertCircle,
   Receipt,
-  XCircle,
   Clock,
   ArrowRight,
   Printer,
-  Download
+  Download,
+  Lock,
+  Sparkles,
+  Calendar,
+  X
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context.tsx';
 import { useBusiness } from '../../lib/business-context.tsx';
-import { freshTestApi, SubscriptionData } from '../../lib/fresh-test-api.ts';
-import { openRazorpayCheckout } from '../../lib/razorpay.ts';
-import { openCashfreeCheckout, redirectToCashfreeSubscription } from '../../lib/cashfree.ts';
+import { freshTestApi, SubscriptionData, QorbiqPlanItem } from '../../lib/fresh-test-api.ts';
+import { openCashfreeCheckout } from '../../lib/cashfree.ts';
+
+// Official Plans Configuration
+const OFFICIAL_RENEWAL_PLANS: Record<'qorbiq_6_months' | 'qorbiq_12_months', QorbiqPlanItem> = {
+  qorbiq_6_months: {
+    id: 'qorbiq_6_months',
+    name: 'Qorbiq AI – 6 Months',
+    price: 1800,
+    currency: 'INR',
+    durationDays: 180,
+    billingType: 'One-Time Payment',
+    autoRenew: false,
+    renewal: 'Manual',
+    description: '180 days direct access to Qorbiq AI with zero recurring debits or hidden mandates.',
+    tagline: 'Flexible 6-Month AI review automation.',
+    features: [
+      '180 Days Full Access',
+      'One-Time Payment — No Mandates',
+      'Manual Renewal Only',
+      'Unlimited AI review generation',
+      'Permanent Dynamic QR with server redirect'
+    ]
+  },
+  qorbiq_12_months: {
+    id: 'qorbiq_12_months',
+    name: 'Qorbiq AI – 12 Months',
+    price: 2999,
+    currency: 'INR',
+    durationDays: 365,
+    billingType: 'One-Time Payment',
+    autoRenew: false,
+    renewal: 'Manual',
+    description: '365 days full access to Qorbiq AI with maximum annual savings and zero recurring debit.',
+    tagline: 'Best Value: 1 Full Year access with ₹601 savings.',
+    discount: 16.7,
+    features: [
+      '365 Days (1 Full Year) Access',
+      'One-Time Payment — No Mandates',
+      'Manual Renewal Only',
+      'Save ₹601 vs two 6-month cycles',
+      'Unlimited AI review generation',
+      'Permanent Dynamic QR with server redirect'
+    ]
+  }
+};
 
 export const BillingPage: React.FC = () => {
   const { user } = useAuth();
@@ -25,14 +70,13 @@ export const BillingPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
   const [invoices, setInvoices] = useState<any[]>([]);
-  const [activating, setActivating] = useState(false);
-  const [successNotice, setSuccessNotice] = useState<string | null>(null);
-  const [upgradeError, setUpgradeError] = useState<string | null>(null);
 
-  // Cancellation Modal State
-  const [showCancelModal, setShowCancelModal] = useState(false);
-  const [cancelLoading, setCancelLoading] = useState(false);
-  const [cancelError, setCancelError] = useState<string | null>(null);
+  // Renewal selection and confirmation state (Requirement 8 & 10)
+  const [selectedRenewalPlan, setSelectedRenewalPlan] = useState<'qorbiq_6_months' | 'qorbiq_12_months'>('qorbiq_12_months');
+  const [confirmingPlan, setConfirmingPlan] = useState<QorbiqPlanItem | null>(null);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [successNotice, setSuccessNotice] = useState<string | null>(null);
 
   useEffect(() => {
     loadBilling();
@@ -54,108 +98,50 @@ export const BillingPage: React.FC = () => {
     }
   };
 
-  const handleSwitchInterval = async (targetInterval: 'monthly' | 'yearly') => {
-    try {
-      setActivating(true);
-      setUpgradeError(null);
-      setSuccessNotice(null);
+  const handleOpenConfirmModal = (planId: 'qorbiq_6_months' | 'qorbiq_12_months') => {
+    setActionError(null);
+    setConfirmingPlan(OFFICIAL_RENEWAL_PLANS[planId]);
+  };
 
-      // Step 1: Create payment intent on backend for target interval (prices derived server-side)
+  const handleProceedWithRenewal = async () => {
+    if (!confirmingPlan) return;
+
+    try {
+      setCheckoutLoading(true);
+      setActionError(null);
+
+      // Create server-side payment intent (Requirement 2, 3, 4)
       const intent = await freshTestApi.createPaymentIntent({
-        planId: 'reviewflow_unlimited',
-        billingInterval: targetInterval
+        planId: confirmingPlan.id,
+        amount: confirmingPlan.price,
+        durationDays: confirmingPlan.durationDays,
+        gateway: 'CASHFREE',
+        billingModel: 'ONE_TIME',
+        autoRenew: false
       });
 
-      // Step 2: Route through Cashfree
-      if (intent.provider === 'CASHFREE') {
-        if (intent.authLink) {
-          redirectToCashfreeSubscription(intent.authLink);
-          return;
-        }
-
-        if (intent.paymentSessionId) {
-          await openCashfreeCheckout({
-            paymentSessionId: intent.paymentSessionId,
-            mode: intent.environment || 'sandbox'
-          });
-          return;
-        }
-      }
-
-      // Step 2b: Fallback Razorpay checkout
-      let checkoutRes;
-      try {
-        checkoutRes = await openRazorpayCheckout({
-          key: intent.keyId,
-          amount: intent.amount,
-          currency: intent.currency,
-          name: 'Qorbiq AI',
-          description: `Qorbiq AI Unlimited (${targetInterval === 'yearly' ? 'Yearly' : 'Monthly'})`,
-          order_id: intent.orderId,
-          prefill: {
-            name: user?.displayName || '',
-            email: user?.email || ''
-          },
-          theme: {
-            color: '#2563eb'
-          }
+      if (intent.provider === 'CASHFREE' && intent.paymentSessionId) {
+        await openCashfreeCheckout({
+          paymentSessionId: intent.paymentSessionId,
+          mode: intent.environment || 'sandbox'
         });
-      } catch (checkoutErr: any) {
-        if (checkoutErr?.message !== 'PAYMENT_CANCELLED') {
-          setUpgradeError(checkoutErr?.message || 'Checkout failed');
-        }
-        setActivating(false);
         return;
       }
 
-      // Step 3: Cryptographic signature verification on server
-      const verification = await freshTestApi.verifyPayment({
-        paymentId: intent.paymentId,
-        gateway: 'RAZORPAY',
-        razorpay_payment_id: checkoutRes.razorpay_payment_id,
-        razorpay_order_id: checkoutRes.razorpay_order_id || intent.orderId,
-        razorpay_subscription_id: checkoutRes.razorpay_subscription_id || intent.subscriptionId,
-        razorpay_signature: checkoutRes.razorpay_signature
-      });
-
-      if (!verification.success) {
-        throw new Error((verification as any).error || 'Server payment verification failed.');
-      }
-
-      setSuccessNotice('🎉 Subscription successfully updated and verified!');
-      await refreshBusinesses();
-      await loadBilling();
-      setTimeout(() => setSuccessNotice(null), 4000);
+      throw new Error('Cashfree payment session could not be established.');
     } catch (err: any) {
-      setUpgradeError(err.message || 'Billing change failed');
-    } finally {
-      setActivating(false);
-    }
-  };
-
-  const handleConfirmCancel = async () => {
-    if (!subscription) return;
-    try {
-      setCancelLoading(true);
-      setCancelError(null);
-
-      const res = await freshTestApi.cancelSubscription({
-        subscriptionId: subscription.id,
-        reason: 'Cancelled by customer via self-service billing page'
-      });
-
-      if (!res.success) {
-        throw new Error(res.message || 'Failed to cancel subscription.');
+      if (err?.message === 'PAYMENT_CANCELLED') {
+        setActionError('Renewal checkout was cancelled. No charge was processed.');
+      } else {
+        const rawMsg = err?.message || '';
+        if (rawMsg.toLowerCase().includes('fetch failed') || rawMsg.toLowerCase().includes('enotfound')) {
+          setActionError('Unable to connect to payment server. Please verify backend server is running and internet access is available.');
+        } else {
+          setActionError(rawMsg || 'Renewal checkout could not be initiated.');
+        }
       }
-
-      setShowCancelModal(false);
-      setSuccessNotice('Subscription successfully cancelled. Your access remains active until the end of your billing cycle.');
-      await loadBilling();
-      setTimeout(() => setSuccessNotice(null), 6000);
-    } catch (err: any) {
-      setCancelError(err.message || 'Cancellation could not be completed. Please try again.');
     } finally {
-      setCancelLoading(false);
+      setCheckoutLoading(false);
     }
   };
 
@@ -163,29 +149,46 @@ export const BillingPage: React.FC = () => {
     return (
       <div className="py-20 text-center space-y-3 font-sans">
         <RefreshCw className="w-8 h-8 animate-spin text-blue-600 mx-auto" />
-        <p className="text-sm text-slate-500">Loading plan subscription details...</p>
+        <p className="text-sm text-slate-500">Loading plan and billing entitlement...</p>
       </div>
     );
   }
 
-  const isMonthly = (subscription as any)?.billingInterval !== 'yearly';
-  const planPrice = (subscription as any)?.price || (isMonthly ? 299 : 2999);
-  const subStatus = (subscription?.status || 'inactive').toLowerCase();
-  const isSubscriptionActive = subStatus === 'active' || subStatus === 'trialing';
-  const isCancelled = subStatus === 'cancelled' || subStatus === 'cancellation_pending';
-  const isPending = subStatus === 'pending' || subStatus === 'authorization_pending';
-  const providerName = (subscription as any)?.provider || 'CASHFREE';
+  // Calculate status and entitlement
+  const isExpired = subscription
+    ? subscription.status === 'EXPIRED' ||
+      subscription.status === 'expired' ||
+      new Date(subscription.currentPeriodEnd).getTime() <= Date.now()
+    : false;
+
+  const isActive = subscription && !isExpired && (subscription.status === 'ACTIVE' || subscription.status === 'active' || subscription.status === 'trialing');
+
+  const expiryDate = subscription?.currentPeriodEnd
+    ? new Date(subscription.currentPeriodEnd)
+    : null;
+
+  const rawStartDate = subscription?.currentPeriodStart || subscription?.createdAt;
+  const startDate = rawStartDate ? new Date(rawStartDate) : null;
+
+  const daysRemaining = expiryDate
+    ? Math.max(0, Math.ceil((expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    : 0;
+
+  const currentPlanName = subscription?.planName || (subscription?.billingInterval === 'yearly' ? 'Qorbiq AI – 12 Months' : 'Qorbiq AI – 6 Months');
+  const currentDurationDays = subscription?.durationDays || (subscription?.billingInterval === 'yearly' ? 365 : 180);
+  const currentPrice = subscription?.price || subscription?.amount || (subscription?.billingInterval === 'yearly' ? 2999 : 1800);
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-12 font-sans">
+      {/* Page Title */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-200">
         <div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight flex items-center gap-2">
             <CreditCard className="w-7 h-7 text-blue-600" />
-            <span>Billing & Subscription</span>
+            <span>Billing & Access Entitlement</span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-600 mt-1">
-            Manage your Qorbiq AI subscription, billing cycle, renewal mandate, and verified invoices.
+            View your active Qorbiq AI plan, access expiry date, verified invoices, and manual renewals.
           </p>
         </div>
       </div>
@@ -197,196 +200,236 @@ export const BillingPage: React.FC = () => {
         </div>
       )}
 
-      {upgradeError && (
+      {actionError && (
         <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center gap-2.5">
           <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-          <span>{upgradeError}</span>
+          <span>{actionError}</span>
         </div>
       )}
 
-      {/* Main Plan Overview Card */}
+      {/* Main Plan Status Card */}
       {subscription ? (
         <section className="bg-white rounded-3xl p-6 sm:p-8 border-2 border-blue-600 shadow-xl space-y-6 relative overflow-hidden">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100">
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100">
-                  {isMonthly ? 'Monthly Subscription' : 'Yearly Subscription'}
-                </span>
-                
-                {/* Status Badges */}
-                {isSubscriptionActive && !isCancelled && (
-                  <span className="text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    Active Subscription
+                {/* Status Badge */}
+                {isActive && (
+                  <span className="text-[10px] font-bold uppercase px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>Active Access ({daysRemaining} Days Left)</span>
                   </span>
                 )}
-                {isPending && (
-                  <span className="text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    <span>Mandate Authorization Pending</span>
-                  </span>
-                )}
-                {isCancelled && (
-                  <span className="text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-                    Cancellation Scheduled
-                  </span>
-                )}
-                {!isSubscriptionActive && !isPending && !isCancelled && (
-                  <span className="text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
-                    {subscription.status || 'Inactive'}
+                {isExpired && (
+                  <span className="text-[10px] font-bold uppercase px-3 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1.5">
+                    <Clock className="w-3 h-3 text-rose-600" />
+                    <span>Access Expired · Manual Renewal Required</span>
                   </span>
                 )}
 
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">
-                  Gateway: {providerName}
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                  One-Time Payment
+                </span>
+
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                  Auto Renewal: Disabled
+                </span>
+
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
+                  Renewal: Manual
                 </span>
               </div>
-              <h2 className="text-2xl font-black text-slate-900 mt-2">Qorbiq AI Unlimited</h2>
-              <p className="text-xs text-slate-500 mt-0.5 max-w-md">
-                Complete access to AI generation, permanent dynamic QR codes, NFC stand, and CRM suite.
+
+              <h2 className="text-2xl font-black text-slate-900 mt-3">{currentPlanName}</h2>
+              <p className="text-xs text-slate-500 mt-1 max-w-md">
+                Full access to AI review generation, permanent dynamic QR codes, NFC support, and CRM portal.
               </p>
             </div>
 
             <div className="text-left sm:text-right">
               <div className="text-3xl font-black text-slate-900">
-                ₹{planPrice.toLocaleString()}{' '}
-                <span className="text-xs text-slate-500 font-normal">
-                  {isMonthly ? '/ month' : '/ year'}
-                </span>
+                ₹{currentPrice.toLocaleString()}{' '}
+                <span className="text-xs text-slate-500 font-normal">INR ({currentDurationDays} Days)</span>
               </div>
-              <span className="text-[11px] text-slate-500 block mt-0.5">
-                {isCancelled
-                  ? `Access ends on ${new Date(subscription.currentPeriodEnd).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`
-                  : `Renews on ${new Date(subscription.renewalDate || subscription.currentPeriodEnd).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`}
+              <span className="text-[11px] text-slate-500 block mt-1">
+                {isExpired
+                  ? `Expired on ${expiryDate?.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`
+                  : `Access valid until ${expiryDate?.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`}
               </span>
             </div>
           </div>
 
-          {/* Cancellation Notice if Cancellation Scheduled */}
-          {isCancelled && (
-            <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200 text-xs text-amber-800 space-y-1">
-              <span className="font-bold block">Cancellation Confirmed</span>
-              <p>
-                Your subscription has been cancelled and will not renew automatically. You have full access to all features until{' '}
-                <strong>
-                  {new Date(subscription.currentPeriodEnd).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
-                </strong>.
-              </p>
+          {/* Entitlement Details Matrix */}
+          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+            <div>
+              <span className="text-[10px] uppercase font-bold text-slate-400 block">Plan Name</span>
+              <span className="font-semibold text-slate-900">{currentPlanName}</span>
+            </div>
+            <div>
+              <span className="text-[10px] uppercase font-bold text-slate-400 block">Access Duration</span>
+              <span className="font-semibold text-slate-900">{currentDurationDays} Days</span>
+            </div>
+            <div>
+              <span className="text-[10px] uppercase font-bold text-slate-400 block">Start Date</span>
+              <span className="font-semibold text-slate-900">
+                {startDate ? startDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+              </span>
+            </div>
+            <div>
+              <span className="text-[10px] uppercase font-bold text-slate-400 block">Expiry Date</span>
+              <span className={`font-semibold ${isExpired ? 'text-rose-600' : 'text-slate-900'}`}>
+                {expiryDate ? expiryDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+              </span>
+            </div>
+          </div>
+
+          {/* Expired Warning Banner if applicable */}
+          {isExpired && (
+            <div className="p-4 bg-rose-50 rounded-2xl border border-rose-200 flex items-start gap-3 text-xs text-rose-800">
+              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+              <div>
+                <strong className="block font-bold">Your access period has finished.</strong>
+                <p className="mt-0.5 text-rose-700">
+                  Because auto-renewal is disabled, no recurring debit was attempted. Please select a plan below to renew your access manually.
+                </p>
+              </div>
             </div>
           )}
-
-          {/* Feature Checklist */}
-          <div className="space-y-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 block">
-              Plan Entitlements:
-            </span>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-700">
-              {[
-                'Unlimited AI review generation',
-                'Unlimited regeneration & alternative drafts',
-                'Zero punctuation clean formatting',
-                'Permanent Dynamic QR with server redirect',
-                '4K HD print & SVG vector QR download',
-                'NFC smart stand & counter tag support',
-                'English, Hindi & Marathi natural support',
-                'Direct Google Review journey integration',
-                'CRM lead tracking & sales follow-up portal',
-                'Live scan & copy conversion analytics'
-              ].map((f, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>{f}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Switch Billing Cycle & Cancel Action */}
-          <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="space-y-0.5">
-              <span className="font-bold text-xs text-slate-900">
-                {isMonthly ? 'Switch to Annual Billing' : 'Current Plan: Annual Billing'}
-              </span>
-              <p className="text-xs text-slate-500">
-                {isMonthly
-                  ? 'Save ₹589/year by switching to Yearly billing (₹2,999/yr) compared with 12 monthly payments.'
-                  : 'You are on the best-value yearly billing plan (₹2,999/year).'}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3">
-              {isMonthly ? (
-                <button
-                  type="button"
-                  onClick={() => handleSwitchInterval('yearly')}
-                  disabled={activating}
-                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors shrink-0 cursor-pointer disabled:opacity-50"
-                >
-                  {activating ? 'Switching...' : 'Upgrade to Yearly (Save ₹589/yr)'}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => handleSwitchInterval('monthly')}
-                  disabled={activating}
-                  className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-xl transition-colors shrink-0 cursor-pointer disabled:opacity-50"
-                >
-                  {activating ? 'Switching...' : 'Switch to Monthly (₹299/mo)'}
-                </button>
-              )}
-
-              {/* Cancel Button */}
-              {isSubscriptionActive && !isCancelled && (
-                <button
-                  type="button"
-                  onClick={() => setShowCancelModal(true)}
-                  className="px-4 py-2 border border-rose-200 hover:bg-rose-50 text-rose-600 font-semibold text-xs rounded-xl transition-colors shrink-0 cursor-pointer"
-                >
-                  Cancel Subscription
-                </button>
-              )}
-            </div>
-          </div>
         </section>
       ) : (
-        /* No active subscription card */
+        /* No Active Subscription */
         <section className="bg-white rounded-3xl p-8 border border-slate-200 shadow-xs text-center space-y-4">
           <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 mx-auto">
             <CreditCard className="w-6 h-6" />
           </div>
           <div className="space-y-1">
-            <h2 className="text-xl font-bold text-slate-900">No Active Subscription</h2>
+            <h2 className="text-xl font-bold text-slate-900">No Active Plan Found</h2>
             <p className="text-xs text-slate-500 max-w-md mx-auto">
-              Subscribe to Qorbiq AI to activate your business dashboard, permanent dynamic QR codes, and AI review generation.
+              Select one of our two official one-time payment plans below to activate your business workspace and dynamic QR stand.
             </p>
-          </div>
-          <div className="pt-2">
-            <a
-              href="/pricing"
-              className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
-            >
-              <span>View Plans (From ₹299/mo)</span>
-              <ArrowRight className="w-4 h-4" />
-            </a>
           </div>
         </section>
       )}
 
-      {/* Payment History / Invoices Table */}
+      {/* ============================================================= */}
+      {/* REQUIREMENT 10: MANUAL PLAN RENEWAL SECTION */}
+      {/* ============================================================= */}
+      <section className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-6">
+        <div>
+          <div className="inline-flex items-center gap-1.5 text-blue-600 font-bold text-xs uppercase tracking-wider mb-1">
+            <Calendar className="w-4 h-4" />
+            <span>Manual Plan Renewal</span>
+          </div>
+          <h2 className="text-xl sm:text-2xl font-black text-slate-900">
+            {isExpired ? 'Renew Your Access' : 'Renew or Extend Access'}
+          </h2>
+          <p className="text-xs text-slate-500 mt-1 max-w-2xl leading-relaxed">
+            Choose either plan to renew your business access. Both options are strictly One-Time Payments with zero recurring bank debits.
+          </p>
+        </div>
+
+        {/* The Two Renewal Choices */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Plan 1: 6 Months */}
+          <div
+            onClick={() => setSelectedRenewalPlan('qorbiq_6_months')}
+            className={`p-5 rounded-2xl border-2 transition-all cursor-pointer space-y-4 ${
+              selectedRenewalPlan === 'qorbiq_6_months'
+                ? 'border-blue-600 bg-blue-50/40 shadow-sm ring-1 ring-blue-600/20'
+                : 'border-slate-200 hover:border-slate-300 bg-white'
+            }`}
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-100/70 px-2 py-0.5 rounded-full">
+                  Half-Yearly
+                </span>
+                <h3 className="text-lg font-black text-slate-900 mt-1">Qorbiq AI – 6 Months</h3>
+                <p className="text-xs text-slate-500">180 Days Access · Manual Renewal</p>
+              </div>
+              <div className="text-right">
+                <span className="text-2xl font-black text-slate-900">₹1,800</span>
+                <span className="text-[10px] text-slate-500 block font-semibold">INR (One-Time)</span>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs">
+              <span className="text-slate-600">Auto Renewal: <strong className="text-rose-600">Disabled</strong></span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleOpenConfirmModal('qorbiq_6_months');
+                }}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shadow-xs"
+              >
+                Renew 6 Months (₹1,800)
+              </button>
+            </div>
+          </div>
+
+          {/* Plan 2: 12 Months */}
+          <div
+            onClick={() => setSelectedRenewalPlan('qorbiq_12_months')}
+            className={`p-5 rounded-2xl border-2 transition-all cursor-pointer space-y-4 relative ${
+              selectedRenewalPlan === 'qorbiq_12_months'
+                ? 'border-blue-600 bg-blue-50/40 shadow-sm ring-1 ring-blue-600/20'
+                : 'border-slate-200 hover:border-slate-300 bg-white'
+            }`}
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-100/70 px-2 py-0.5 rounded-full">
+                    Yearly
+                  </span>
+                  <span className="text-[10px] font-black uppercase text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full">
+                    Save ₹601
+                  </span>
+                </div>
+                <h3 className="text-lg font-black text-slate-900 mt-1">Qorbiq AI – 12 Months</h3>
+                <p className="text-xs text-slate-500">365 Days Access · Manual Renewal</p>
+              </div>
+              <div className="text-right">
+                <span className="text-2xl font-black text-slate-900">₹2,999</span>
+                <span className="text-[10px] text-slate-500 block font-semibold">INR (One-Time)</span>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs">
+              <span className="text-slate-600">Auto Renewal: <strong className="text-rose-600">Disabled</strong></span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleOpenConfirmModal('qorbiq_12_months');
+                }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shadow-xs"
+              >
+                Renew 12 Months (₹2,999)
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ============================================================= */}
+      {/* REQUIREMENT 9: VERIFIED PAYMENT INVOICES TABLE */}
+      {/* ============================================================= */}
       <section className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
             <Receipt className="w-4 h-4 text-blue-600" />
-            <span>Billing Invoices & Payment History</span>
+            <span>Verified Tax Invoices & Receipts</span>
           </h3>
           <span className="text-[11px] font-mono text-emerald-600 font-bold bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100">
-            {providerName} Verified
+            Cashfree Verified
           </span>
         </div>
 
         {invoices.length === 0 ? (
-          <p className="text-xs text-slate-500 py-4 text-center">
-            No past billing invoices recorded yet. Receipts appear here automatically upon verified payment capture.
+          <p className="text-xs text-slate-500 py-6 text-center">
+            No past billing invoices recorded yet. Invoices are generated only after verified successful payment.
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -395,10 +438,10 @@ export const BillingPage: React.FC = () => {
                 <tr className="border-b border-slate-100 text-slate-400 font-semibold">
                   <th className="py-2.5 px-3">Invoice Number</th>
                   <th className="py-2.5 px-3">Date</th>
+                  <th className="py-2.5 px-3">Plan / Description</th>
                   <th className="py-2.5 px-3">Amount</th>
-                  <th className="py-2.5 px-3">Gateway</th>
                   <th className="py-2.5 px-3">Status</th>
-                  <th className="py-2.5 px-3 text-right">Invoice PDF</th>
+                  <th className="py-2.5 px-3 text-right">PDF Invoice</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -408,45 +451,48 @@ export const BillingPage: React.FC = () => {
                       {inv.invoiceNumber || inv.id}
                     </td>
                     <td className="py-3 px-3 text-slate-500 whitespace-nowrap">
-                      {inv.issuedAt || inv.createdAt
-                        ? new Date(inv.issuedAt || inv.createdAt).toLocaleDateString('en-IN', {
+                      {inv.invoiceDate || inv.issuedAt || inv.createdAt
+                        ? new Date(inv.invoiceDate || inv.issuedAt || inv.createdAt).toLocaleDateString('en-IN', {
                             day: 'numeric',
                             month: 'short',
                             year: 'numeric'
                           })
                         : 'Recent'}
                     </td>
-                    <td className="py-3 px-3 font-semibold text-slate-900">
-                      ₹{inv.totalAmount || inv.amount}
+                    <td className="py-3 px-3 font-medium text-slate-800">
+                      {inv.items?.[0]?.description?.split('(')[0]?.trim() || inv.businessName || 'Qorbiq AI'}
+                    </td>
+                    <td className="py-3 px-3 font-bold text-slate-900">
+                      ₹{(inv.grandTotal ?? inv.totalAmount ?? inv.amount)?.toLocaleString('en-IN')}
                     </td>
                     <td className="py-3 px-3">
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 font-mono">
-                        {inv.gateway || providerName}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3">
-                      <span
-                        className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                          inv.status === 'PAID'
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : inv.status === 'REFUNDED'
-                            ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                            : 'bg-slate-100 text-slate-600'
-                        }`}
-                      >
-                        {inv.status}
+                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        PAID
                       </span>
                     </td>
                     <td className="py-3 px-3 text-right">
-                      <a
-                        href={`/api/invoices/${inv.id}/pdf`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold transition-colors"
-                      >
-                        <Printer className="w-3.5 h-3.5" />
-                        <span>Print PDF</span>
-                      </a>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <a
+                          href={`/api/invoices/${inv.id}/pdf`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors"
+                          title="Print / View Invoice"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                          <span>Print</span>
+                        </a>
+                        <a
+                          href={`/api/invoices/${inv.id}/pdf?download=1`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold transition-colors"
+                          title="Download Verified Tax PDF"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Download PDF</span>
+                        </a>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -454,69 +500,105 @@ export const BillingPage: React.FC = () => {
             </table>
           </div>
         )}
-
-        <p className="text-xs text-slate-500 leading-relaxed pt-2 border-t border-slate-100">
-          All payments and recurring mandate renewals are cryptographically verified through Cashfree webhooks.
-        </p>
       </section>
 
-      {/* CANCELLATION CONFIRMATION MODAL */}
-      {showCancelModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center gap-3 text-rose-600">
-              <div className="w-10 h-10 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center shrink-0">
-                <XCircle className="w-6 h-6" />
+      {/* ============================================================= */}
+      {/* REQUIREMENT 8: ORDER CONFIRMATION MODAL BEFORE CHECKOUT */}
+      {/* ============================================================= */}
+      {confirmingPlan && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl p-6 sm:p-8 space-y-6">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-blue-600 text-white font-extrabold flex items-center justify-center text-sm">
+                  Q
+                </div>
+                <h3 className="text-lg font-black text-slate-900">Confirm Plan Renewal</h3>
               </div>
-              <div>
-                <h3 className="font-bold text-base text-slate-900">Cancel Recurring Subscription?</h3>
-                <span className="text-xs text-slate-500">Self-service cancellation</span>
-              </div>
+              <button
+                type="button"
+                onClick={() => setConfirmingPlan(null)}
+                disabled={checkoutLoading}
+                className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 cursor-pointer disabled:opacity-50"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Are you sure you want to cancel your Qorbiq AI recurring subscription?
-              Your recurring mandate will be halted on Cashfree.
-              Your business workspace and dynamic QR codes will remain active until the end of your prepaid period (
-              <strong>
-                {subscription ? new Date(subscription.currentPeriodEnd).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : ''}
-              </strong>
-              ). After this date, your subscription will not renew.
-            </p>
-
-            {cancelError && (
-              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium">
-                {cancelError}
+            {actionError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-xs text-rose-700">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                <span>{actionError}</span>
               </div>
             )}
 
-            <div className="flex items-center justify-end gap-3 pt-2">
+            {/* Clear Order Summary (Requirement 8) */}
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-3 text-xs">
+              <div className="flex justify-between items-center text-slate-600">
+                <span>Selected Plan:</span>
+                <span className="font-bold text-slate-900">{confirmingPlan.name}</span>
+              </div>
+
+              <div className="flex justify-between items-center text-slate-600">
+                <span>Access Duration:</span>
+                <span className="font-bold text-slate-900">{confirmingPlan.durationDays} Days</span>
+              </div>
+
+              <div className="flex justify-between items-center text-slate-600">
+                <span>Billing Type:</span>
+                <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
+                  One-Time Payment
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center text-slate-600">
+                <span>Auto Renewal:</span>
+                <span className="font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md">
+                  Disabled (Manual Only)
+                </span>
+              </div>
+
+              <div className="pt-2 border-t border-slate-200 flex justify-between items-baseline">
+                <span className="text-sm font-bold text-slate-900">Total Payable Amount:</span>
+                <span className="text-2xl font-black text-blue-600">
+                  ₹{confirmingPlan.price.toLocaleString()} INR
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
               <button
                 type="button"
-                onClick={() => {
-                  setShowCancelModal(false);
-                  setCancelError(null);
-                }}
-                disabled={cancelLoading}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
+                onClick={handleProceedWithRenewal}
+                disabled={checkoutLoading}
+                className="w-full py-3.5 px-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer bg-blue-600 hover:bg-blue-700 text-white shadow-md disabled:opacity-50"
               >
-                Keep Subscription
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmCancel}
-                disabled={cancelLoading}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              >
-                {cancelLoading ? (
+                {checkoutLoading ? (
                   <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Cancelling...</span>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Connecting Cashfree Gateway...</span>
                   </>
                 ) : (
-                  <span>Confirm Cancellation</span>
+                  <>
+                    <span>Proceed to Cashfree Checkout — ₹{confirmingPlan.price.toLocaleString()}</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
                 )}
               </button>
+
+              <button
+                type="button"
+                onClick={() => setConfirmingPlan(null)}
+                disabled={checkoutLoading}
+                className="w-full py-2.5 text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
+              >
+                Cancel and return
+              </button>
+            </div>
+
+            <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
+              <Lock className="w-3 h-3 text-slate-400" />
+              <span>Cashfree PG 256-Bit SSL Encrypted Checkout</span>
             </div>
           </div>
         </div>

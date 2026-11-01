@@ -259,18 +259,18 @@ export const SuperAdminOverviewPage: React.FC = () => {
             <span className="text-[10px] text-slate-400 mt-0.5 block">Managed businesses</span>
           </Link>
 
-          {/* Monthly Subscriptions */}
+          {/* 6 Months Plans */}
           <Link to="/super-admin/subscriptions" className="bg-white border border-slate-200 hover:border-blue-400 rounded-2xl p-4 shadow-xs transition-all block">
-            <span className="text-[11px] font-semibold text-blue-600 block">Active Monthly (₹299)</span>
+            <span className="text-[11px] font-semibold text-blue-600 block">Active 6 Months (₹1,800)</span>
             <div className="text-2xl font-black text-blue-600 mt-1">{activeMonthlySubscriptions}</div>
-            <span className="text-[10px] text-blue-600/80 mt-0.5 block">Every 1 month</span>
+            <span className="text-[10px] text-blue-600/80 mt-0.5 block">180 Days Access</span>
           </Link>
 
-          {/* Yearly Subscriptions */}
+          {/* 12 Months Plans */}
           <Link to="/super-admin/subscriptions" className="bg-white border border-slate-200 hover:border-blue-400 rounded-2xl p-4 shadow-xs transition-all block">
-            <span className="text-[11px] font-semibold text-indigo-600 block">Active Yearly (₹2,999)</span>
+            <span className="text-[11px] font-semibold text-indigo-600 block">Active 12 Months (₹2,999)</span>
             <div className="text-2xl font-black text-indigo-600 mt-1">{activeYearlySubscriptions}</div>
-            <span className="text-[10px] text-indigo-600/80 mt-0.5 block">Every 1 year</span>
+            <span className="text-[10px] text-indigo-600/80 mt-0.5 block">365 Days Access</span>
           </Link>
 
           {/* Standees Awaiting Dispatch */}

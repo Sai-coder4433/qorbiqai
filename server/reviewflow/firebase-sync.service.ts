@@ -452,7 +452,7 @@ class FirebaseSyncService {
     };
   }
 
-  /** Real-time sync of an individual payment record to Firestore (Requirement 4) */
+  /** Real-time sync of an individual payment record to Firestore (Requirement 4 & 7) */
   public async syncPaymentDoc(payment: any): Promise<void> {
     try {
       if (!this.db) this.init();
@@ -472,9 +472,17 @@ class FirebaseSyncService {
         verifiedPaymentStatus: payment.status,
         paymentType: payment.paymentType,
         planId: payment.planId,
+        planName: payment.planName || (payment.billingInterval === 'yearly' ? 'Qorbiq AI – 12 Months' : 'Qorbiq AI – 6 Months'),
+        durationDays: payment.durationDays || (payment.billingInterval === 'yearly' ? 365 : 180),
+        entitlementStartDate: payment.entitlementStartDate || payment.verifiedAt || payment.createdAt,
+        entitlementExpiryDate: payment.entitlementExpiryDate || null,
+        billingType: payment.billingType || 'One-Time Payment',
+        autoRenew: false,
+        renewal: 'Manual',
         billingInterval: payment.billingInterval || 'monthly',
         planVersion: payment.planVersion || 1,
         gateway: payment.gateway || 'CASHFREE',
+        orderId: payment.cashfreeOrderId || payment.razorpayOrderId || null,
         cashfreeOrderId: payment.cashfreeOrderId || null,
         cashfreePaymentId: payment.cashfreePaymentId || null,
         cashfreeSubscriptionId: payment.cashfreeSubscriptionId || null,
@@ -496,7 +504,7 @@ class FirebaseSyncService {
     }
   }
 
-  /** Real-time sync of an individual subscription record to Firestore (Requirement 4: 14 mandatory fields) */
+  /** Real-time sync of an individual subscription record to Firestore (Requirement 4 & 7) */
   public async syncSubscriptionDoc(subscription: any): Promise<void> {
     try {
       if (!this.db) this.init();
@@ -515,9 +523,18 @@ class FirebaseSyncService {
         billingInterval: subscription.billingInterval || 'monthly',
         planPrice: subscription.price,
         price: subscription.price,
+        amount: subscription.price,
+        durationDays: subscription.durationDays || (subscription.billingInterval === 'yearly' ? 365 : 180),
+        entitlementStartDate: subscription.entitlementStartDate || subscription.currentPeriodStart || null,
+        entitlementExpiryDate: subscription.entitlementExpiryDate || subscription.currentPeriodEnd,
+        billingType: subscription.billingType || 'One-Time Payment',
+        autoRenew: false,
+        renewal: 'Manual',
         priceMonthly: subscription.priceMonthly || subscription.price,
         currency: subscription.currency || 'INR',
         provider: subscription.provider || 'CASHFREE',
+        orderId: subscription.cashfreeOrderId || null,
+        paymentId: subscription.cashfreePaymentId || subscription.id,
         cashfreeSubscriptionId: subscription.cashfreeSubscriptionId || subscription.providerSubscriptionId || null,
         cashfreeOrderId: subscription.cashfreeOrderId || null,
         cashfreePaymentId: subscription.cashfreePaymentId || null,
@@ -527,14 +544,38 @@ class FirebaseSyncService {
         subscriptionCreationDate: subscription.createdAt || new Date().toISOString(),
         currentPeriodStart: subscription.currentPeriodStart || null,
         currentPeriodEnd: subscription.currentPeriodEnd,
-        renewalDate: subscription.renewalDate || subscription.currentPeriodEnd || null,
-        autoRenew: Boolean(subscription.autoRenew),
+        renewalDate: null,
+        nextRenewalDate: null,
         renewalCount: subscription.renewalCount || 0,
         cancellationDetails: subscription.cancellationDetails || null,
         lastVerifiedWebhookEventId: subscription.lastVerifiedWebhookEventId || null,
         createdAt: subscription.createdAt || new Date().toISOString(),
         updatedAt: subscription.updatedAt || new Date().toISOString()
       }, { merge: true });
+
+      // Also sync to entitlements collection by user ID
+      const targetUserId = subscription.userId || subscription.ownerUid;
+      if (targetUserId) {
+        const entRef = doc(this.db, 'entitlements', targetUserId);
+        await setDoc(entRef, {
+          userId: targetUserId,
+          subscriptionId: subscription.id,
+          businessId: subscription.businessId || null,
+          planId: subscription.planId,
+          planName: subscription.planName,
+          amount: subscription.price,
+          orderId: subscription.cashfreeOrderId || null,
+          paymentId: subscription.cashfreePaymentId || subscription.id,
+          entitlementStartDate: subscription.entitlementStartDate || subscription.currentPeriodStart || null,
+          entitlementExpiryDate: subscription.entitlementExpiryDate || subscription.currentPeriodEnd,
+          durationDays: subscription.durationDays || (subscription.billingInterval === 'yearly' ? 365 : 180),
+          status: subscription.status || 'ACTIVE',
+          billingType: 'One-Time Payment',
+          autoRenew: false,
+          renewal: 'Manual',
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      }
     } catch (err: any) {
       console.warn(`[FirebaseSyncService] Failed to sync subscription ${subscription.id}:`, err.message);
     }
@@ -546,10 +587,17 @@ class FirebaseSyncService {
       await this.ensureAuth();
       if (!this.db) return;
       const docId = maybeData ? String(docIdOrData) : String(docIdOrData?.id || docIdOrData?.uid || docIdOrData?.orderId || docIdOrData?.key || 'default');
-      const data = maybeData !== undefined ? maybeData : docIdOrData;
+      const rawData = maybeData !== undefined ? maybeData : docIdOrData;
+      // Sanitize undefined fields so Firestore setDoc does not throw
+      const cleanData: any = {};
+      for (const [k, v] of Object.entries(rawData || {})) {
+        if (v !== undefined) {
+          cleanData[k] = v;
+        }
+      }
       const ref = doc(this.db, colName, docId);
       await setDoc(ref, {
-        ...data,
+        ...cleanData,
         _syncedAt: serverTimestamp()
       }, { merge: true });
     } catch (err: any) {

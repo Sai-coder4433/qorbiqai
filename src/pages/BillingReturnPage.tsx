@@ -90,7 +90,7 @@ export function BillingReturnPage() {
             </div>
             <h2 className="text-xl font-bold text-slate-900">Verifying Payment</h2>
             <p className="text-xs text-slate-500 leading-relaxed max-w-xs mx-auto">
-              Please wait while our server securely verifies your payment and subscription mandate with Cashfree...
+              Please wait while our server securely verifies your payment with Cashfree...
             </p>
           </div>
         )}
@@ -101,9 +101,9 @@ export function BillingReturnPage() {
               <CheckCircle2 className="w-8 h-8" />
             </div>
             <div className="space-y-1">
-              <h2 className="text-xl font-bold text-slate-900">Subscription Activated!</h2>
+              <h2 className="text-xl font-bold text-slate-900">Payment Verified & Access Activated!</h2>
               <p className="text-xs text-slate-500">
-                Your payment and recurring mandate were cryptographically verified by Cashfree.
+                Your one-time payment was securely verified by Cashfree.
               </p>
             </div>
 
@@ -115,13 +115,13 @@ export function BillingReturnPage() {
                 </div>
                 {verifiedSubId && (
                   <div className="flex justify-between items-center text-slate-500">
-                    <span>Subscription Ref:</span>
+                    <span>Access Ref:</span>
                     <span className="font-mono font-semibold text-slate-800">{verifiedSubId.slice(0, 16)}...</span>
                   </div>
                 )}
                 <div className="flex justify-between items-center text-slate-500">
-                  <span>Plan:</span>
-                  <span className="font-semibold text-blue-600">Qorbiq AI Unlimited</span>
+                  <span>Billing Type:</span>
+                  <span className="font-semibold text-emerald-600">One-Time Payment (Manual Renewal)</span>
                 </div>
               </div>
             )}

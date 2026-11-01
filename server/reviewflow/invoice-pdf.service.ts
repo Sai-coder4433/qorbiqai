@@ -1,3 +1,4 @@
+import { jsPDF } from 'jspdf';
 import { ReviewFlowInvoice } from './types.ts';
 
 /**
@@ -186,9 +187,13 @@ export function generateInvoiceHtml(invoice: ReviewFlowInvoice): string {
       Viewing Official Invoice &bull; <span class="mono">${escapeHtml(invoice.invoiceNumber)}</span>
     </div>
     <div style="display: flex; gap: 8px;">
-      <button class="btn btn-primary" onclick="window.print()">
+      <a class="btn btn-primary" href="?download=1" download="${invoice.invoiceNumber}.pdf">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        Download PDF
+      </a>
+      <button class="btn btn-secondary" onclick="window.print()">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
-        Print / Save as PDF
+        Print
       </button>
       <button class="btn btn-secondary" onclick="window.close()">
         Close
@@ -400,4 +405,280 @@ function escapeHtml(str: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+/**
+ * Generates an authentic, downloadable PDF invoice buffer using jsPDF.
+ * Strictly generates downloadable PDF invoices only for verified successful payments.
+ */
+export function generateInvoicePdfBuffer(invoice: ReviewFlowInvoice): Uint8Array {
+  // Security rule: Only verified successful payments can generate downloadable PDF invoices
+  if (invoice.paymentStatus !== 'PAID' && invoice.status !== 'PAID') {
+    throw new Error('Invoices and downloadable PDFs can only be generated for verified successful payments.');
+  }
+
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4'
+  });
+
+  const seller = invoice.sellerDetails || {
+    legalBusinessName: 'SAI ANIL CHAKANKAR',
+    brandName: 'Qorbiq AI',
+    city: 'Pune',
+    state: 'Maharashtra',
+    supportEmail: 'chakankarsai@gmail.com',
+    supportPhone: '+91 9960549106'
+  };
+
+  // Brand Header
+  doc.setFillColor(37, 99, 235); // #2563eb
+  doc.roundedRect(15, 15, 12, 12, 2.5, 2.5, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Q', 19, 23.5);
+
+  doc.setTextColor(15, 23, 42);
+  doc.setFontSize(18);
+  doc.setFont('helvetica', 'bold');
+  doc.text(seller.brandName || 'Qorbiq AI', 31, 21.5);
+
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(100, 116, 139);
+  doc.text('AI Review Automation & Smart Dynamic QR Platform', 31, 26);
+
+  // Status Badge on top right: PAYMENT VERIFIED & PAID
+  doc.setFillColor(236, 253, 245);
+  doc.setDrawColor(167, 243, 208);
+  doc.roundedRect(138, 15, 57, 8, 2, 2, 'FD');
+  doc.setTextColor(6, 95, 70);
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'bold');
+  doc.text('PAYMENT VERIFIED & PAID', 142, 20.5);
+
+  // Tax Invoice Title
+  doc.setTextColor(15, 23, 42);
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  doc.text('TAX INVOICE', 138, 31);
+
+  doc.setTextColor(37, 99, 235);
+  doc.setFontSize(11);
+  doc.setFont('courier', 'bold');
+  doc.text(invoice.invoiceNumber, 138, 37);
+
+  // Invoice & Payment Details
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(100, 116, 139);
+
+  const formattedInvDate = new Date(invoice.invoiceDate).toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  });
+  const formattedPayDate = new Date(invoice.paymentDate).toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  });
+
+  doc.text(`Invoice Date: ${formattedInvDate}`, 138, 43);
+  doc.text(`Payment Date: ${formattedPayDate}`, 138, 48);
+  doc.text(`Payment Ref: ${invoice.paymentReference || 'Direct'}`, 138, 53);
+  doc.text(`Gateway: ${invoice.paymentGateway || 'CASHFREE'}`, 138, 58);
+
+  // Seller Info (Left Column)
+  doc.setTextColor(30, 41, 59);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text(seller.legalBusinessName || 'SAI ANIL CHAKANKAR', 15, 37);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(71, 85, 105);
+  doc.text(`Brand: ${seller.brandName || 'Qorbiq AI'}`, 15, 42);
+  if (seller.registeredAddress) doc.text(seller.registeredAddress, 15, 47);
+  doc.text(`${[seller.city || 'Pune', seller.state || 'Maharashtra', seller.pinCode].filter(Boolean).join(', ')}`, 15, seller.registeredAddress ? 52 : 47);
+  const nextSellerY = seller.registeredAddress ? 57 : 52;
+  doc.text(`Email: ${seller.supportEmail || 'chakankarsai@gmail.com'}`, 15, nextSellerY);
+  doc.text(`Phone: ${seller.supportPhone || '+91 9960549106'}`, 15, nextSellerY + 5);
+  if (seller.gstin) {
+    doc.text(`GSTIN: ${seller.gstin}`, 15, nextSellerY + 10);
+  }
+
+  // Divider Line
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.5);
+  doc.line(15, 68, 195, 68);
+
+  // Customer / Billed To Section
+  doc.setFillColor(248, 250, 252);
+  doc.roundedRect(15, 72, 180, 26, 2, 2, 'F');
+
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(148, 163, 184);
+  doc.text('BILLED TO / CUSTOMER DETAILS', 20, 78);
+
+  doc.setFontSize(10);
+  doc.setTextColor(15, 23, 42);
+  doc.setFont('helvetica', 'bold');
+  doc.text(invoice.customerName || 'Customer', 20, 84);
+
+  doc.setFontSize(8.5);
+  doc.setTextColor(37, 99, 235);
+  doc.text(invoice.businessName || 'Business Workspace', 20, 89);
+
+  doc.setTextColor(71, 85, 105);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Email: ${invoice.customerEmail || 'N/A'}  |  Phone: ${invoice.customerPhone || 'N/A'}`, 20, 94);
+
+  // Amount Paid Box on right
+  const grandTotal = Number(invoice.grandTotal ?? invoice.totalAmount ?? 0);
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(148, 163, 184);
+  doc.text('TOTAL AMOUNT PAID', 138, 78);
+
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text(`INR ${grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, 138, 86);
+
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(5, 150, 105);
+  doc.text('All Taxes Included (INR)', 138, 91);
+
+  // Table of Items
+  const tableY = 105;
+  doc.setFillColor(241, 245, 249);
+  doc.rect(15, tableY, 180, 8, 'F');
+
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(100, 116, 139);
+  doc.text('#', 18, tableY + 5.5);
+  doc.text('DESCRIPTION', 26, tableY + 5.5);
+  doc.text('QTY', 125, tableY + 5.5);
+  doc.text('RATE (INR)', 145, tableY + 5.5);
+  doc.text('TOTAL (INR)', 172, tableY + 5.5);
+
+  // Rows
+  let curY = tableY + 16;
+  const items = invoice.items && invoice.items.length > 0 ? invoice.items : [
+    {
+      description: grandTotal >= 2000
+        ? 'Qorbiq AI — Yearly Plan (Unlimited AI Reviews & Permanent Dynamic QR)'
+        : 'Qorbiq AI — Monthly Plan (Unlimited AI Reviews & Permanent Dynamic QR)',
+      quantity: 1,
+      unitPrice: grandTotal,
+      totalAmount: grandTotal,
+      billingPeriod: grandTotal >= 2000 ? '12 Months' : '1 Month',
+      hsnSac: '998315'
+    }
+  ];
+
+  items.forEach((item, idx) => {
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(71, 85, 105);
+    doc.text(String(idx + 1), 18, curY);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(15, 23, 42);
+    doc.text(item.description, 26, curY);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    const subText = [
+      item.billingPeriod ? `Period: ${item.billingPeriod}` : '',
+      item.hsnSac ? `HSN/SAC: ${item.hsnSac}` : ''
+    ].filter(Boolean).join('  |  ');
+    if (subText) doc.text(subText, 26, curY + 4.5);
+
+    doc.setFontSize(8.5);
+    doc.setTextColor(51, 65, 85);
+    doc.text(String(item.quantity || 1), 127, curY);
+
+    const price = Number(item.unitPrice || grandTotal);
+    const total = Number(item.totalAmount || price * (item.quantity || 1));
+    doc.text(price.toLocaleString('en-IN', { minimumFractionDigits: 2 }), 145, curY);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(15, 23, 42);
+    doc.text(total.toLocaleString('en-IN', { minimumFractionDigits: 2 }), 172, curY);
+
+    doc.setDrawColor(241, 245, 249);
+    doc.line(15, curY + 8, 195, curY + 8);
+    curY += 14;
+  });
+
+  // Summary box at bottom right
+  const sumY = Math.max(curY + 10, 155);
+  doc.setDrawColor(226, 232, 240);
+  doc.line(125, sumY, 195, sumY);
+
+  const subtotal = Number(invoice.subtotal ?? grandTotal);
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(100, 116, 139);
+  doc.text('Subtotal:', 125, sumY + 6);
+  doc.setTextColor(15, 23, 42);
+  doc.text(`INR ${subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, 195, sumY + 6, { align: 'right' });
+
+  let lineOffset = 12;
+  if (invoice.totalTax && invoice.totalTax > 0) {
+    doc.setTextColor(100, 116, 139);
+    doc.text('GST / Tax:', 125, sumY + lineOffset);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`INR ${Number(invoice.totalTax).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, 195, sumY + lineOffset, { align: 'right' });
+    lineOffset += 6;
+  } else {
+    doc.setTextColor(100, 116, 139);
+    doc.text('Tax (GST Exempt):', 125, sumY + lineOffset);
+    doc.setTextColor(15, 23, 42);
+    doc.text('INR 0.00', 195, sumY + lineOffset, { align: 'right' });
+    lineOffset += 6;
+  }
+
+  doc.setDrawColor(15, 23, 42);
+  doc.setLineWidth(0.75);
+  doc.line(125, sumY + lineOffset, 195, sumY + lineOffset);
+
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text('Grand Total:', 125, sumY + lineOffset + 7);
+  doc.text(`INR ${grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, 195, sumY + lineOffset + 7, { align: 'right' });
+
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(5, 150, 105);
+  doc.text('Payment Completed in Full', 195, sumY + lineOffset + 12, { align: 'right' });
+
+  // Footer & Compliance Notice
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.5);
+  doc.line(15, 260, 195, 260);
+
+  doc.setFontSize(7.5);
+  doc.setTextColor(148, 163, 184);
+  doc.text('This is an authentic computer-generated digital tax invoice authorized by SAI ANIL CHAKANKAR.', 15, 266);
+  doc.text(`Cashfree Payment Transaction Reference: ${invoice.paymentReference || 'N/A'}. All payments verified server-side.`, 15, 271);
+  doc.text(`For billing queries or support, contact ${seller.supportEmail || 'chakankarsai@gmail.com'}.`, 15, 276);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(30, 41, 59);
+  doc.text(seller.legalBusinessName || 'SAI ANIL CHAKANKAR', 195, 266, { align: 'right' });
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(100, 116, 139);
+  doc.text('Digitally Signed & Verified', 195, 271, { align: 'right' });
+
+  return new Uint8Array(doc.output('arraybuffer'));
 }

@@ -1,4 +1,10 @@
 export type BillingInterval = 'monthly' | 'yearly' | 'one_time';
+export type BillingModel = 'ONE_TIME' | 'SUBSCRIPTION' | 'ORDER' | 'STANDARD';
+export type PurchaseType =
+  | 'MONTHLY_PAY_ONCE'
+  | 'MONTHLY_SUBSCRIPTION'
+  | 'YEARLY_PAY_ONCE'
+  | 'YEARLY_SUBSCRIPTION';
 export type PaymentStatus = 'PENDING' | 'AUTHORIZED' | 'PAID' | 'FAILED' | 'CANCELLED' | 'REFUNDED' | 'HALTED';
 export type SubscriptionStatus = 'ACTIVE' | 'TRIALING' | 'PENDING' | 'PAUSED' | 'HALTED' | 'CANCELLED' | 'EXPIRED';
 
@@ -20,6 +26,10 @@ export interface PlanConfig {
 
 export interface CreateSubscriptionIntentOptions {
   planId: string;
+  planName?: string;
+  durationDays?: number;
+  billingType?: 'One-Time Payment' | string;
+  renewal?: 'Manual' | string;
   billingInterval: BillingInterval;
   amount: number;
   currency: string;
@@ -29,7 +39,9 @@ export interface CreateSubscriptionIntentOptions {
   customerName?: string;
   idempotencyKey?: string;
   businessName?: string;
-  billingModel?: 'SUBSCRIPTION' | 'ORDER' | 'STANDARD';
+  billingModel?: BillingModel;
+  purchaseType?: PurchaseType;
+  autoRenew?: boolean;
   returnUrl?: string;
   notes?: Record<string, string>;
 }
@@ -40,13 +52,21 @@ export interface PaymentIntentResult {
   orderId?: string;
   subscriptionId?: string;
   paymentSessionId?: string;
+  subscriptionSessionId?: string;
   authLink?: string;
   environment?: 'sandbox' | 'production';
   amount: number;
   currency: string;
   keyId: string;
   planId: string;
+  planName?: string;
+  durationDays?: number;
+  billingType?: 'One-Time Payment' | string;
+  renewal?: 'Manual' | string;
   billingInterval: BillingInterval;
+  billingModel?: BillingModel;
+  purchaseType?: PurchaseType;
+  autoRenew?: boolean;
   businessName: string;
   description: string;
 }
