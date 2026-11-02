@@ -14,6 +14,7 @@ import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 
 // Layouts
 import { AppLayout } from './components/layout/AppLayout.tsx';
+import { OwnerAppLayout } from './components/layout/OwnerAppLayout.tsx';
 import { SuperAdminLayout } from './components/super-admin/SuperAdminLayout.tsx';
 
 // Public Pages (Section 4)
@@ -56,6 +57,13 @@ import { CustomerActivityPage } from './pages/fresh-test/CustomerActivityPage.ts
 import { HelpSupportPage } from './pages/fresh-test/HelpSupportPage.tsx';
 import { OwnerDashboardPage } from './pages/fresh-test/OwnerDashboardPage.tsx';
 import { CreateShopPage } from './pages/fresh-test/CreateShopPage.tsx';
+import { OwnerInvoicesPage } from './pages/fresh-test/OwnerInvoicesPage.tsx';
+import { OwnerProfilePage } from './pages/fresh-test/OwnerProfilePage.tsx';
+
+const ShopRedirect: React.FC = () => {
+  const { shopId } = useParams<{ shopId: string }>();
+  return <Navigate to={shopId ? `/app/shops/${shopId}/dashboard` : '/app/shops'} replace />;
+};
 
 // Super Admin Pages (Section 4, 5, 6, 8, 9, 10)
 import { SuperAdminLoginPage } from './pages/super-admin/SuperAdminLoginPage.tsx';
@@ -176,15 +184,16 @@ export default function App() {
             {/* 3. CLIENT APPLICATION (/app/*) */}
             {/* ======================================================== */}
             {/* ======================================================== */}
-            {/* 3. OWNER DASHBOARD & SHOPS HUB (/app, /app/shops) */}
+            {/* 3. PRIVATE BUSINESS OWNER APPLICATION (/app/*) */}
+            {/* Strictly isolated from public review experience */}
             {/* ======================================================== */}
             <Route
               path="/app"
               element={
                 <ProtectedRoute>
-                  <ErrorBoundary fallbackTitle="Owner Portal Notice">
+                  <OwnerAppLayout>
                     <OwnerDashboardPage />
-                  </ErrorBoundary>
+                  </OwnerAppLayout>
                 </ProtectedRoute>
               }
             />
@@ -192,9 +201,9 @@ export default function App() {
               path="/app/shops"
               element={
                 <ProtectedRoute>
-                  <ErrorBoundary fallbackTitle="Owner Portal Notice">
+                  <OwnerAppLayout>
                     <OwnerDashboardPage />
-                  </ErrorBoundary>
+                  </OwnerAppLayout>
                 </ProtectedRoute>
               }
             />
@@ -202,7 +211,9 @@ export default function App() {
               path="/app/shops/create"
               element={
                 <ProtectedRoute>
-                  <CreateShopPage />
+                  <OwnerAppLayout>
+                    <CreateShopPage />
+                  </OwnerAppLayout>
                 </ProtectedRoute>
               }
             />
@@ -210,7 +221,9 @@ export default function App() {
               path="/app/shops/new"
               element={
                 <ProtectedRoute>
-                  <CreateShopPage />
+                  <OwnerAppLayout>
+                    <CreateShopPage />
+                  </OwnerAppLayout>
                 </ProtectedRoute>
               }
             />
@@ -218,39 +231,151 @@ export default function App() {
               path="/shops/create"
               element={
                 <ProtectedRoute>
-                  <CreateShopPage />
+                  <OwnerAppLayout>
+                    <CreateShopPage />
+                  </OwnerAppLayout>
                 </ProtectedRoute>
               }
             />
 
-            {/* ======================================================== */}
-            {/* 3.5 INDIVIDUAL SHOP WORKSPACE (/app/dashboard/*) */}
-            {/* ======================================================== */}
+            {/* Individual Shop Dynamic Routes */}
             <Route
-              path="/app/dashboard"
+              path="/app/shops/:shopId"
               element={
                 <ProtectedRoute>
-                  <AppLayout>
-                    <DashboardPage />
-                  </AppLayout>
+                  <ShopRedirect />
                 </ProtectedRoute>
               }
             />
             <Route
-              path="/app/dashboard/:businessId"
+              path="/app/shops/:shopId/dashboard"
               element={
                 <ProtectedRoute>
-                  <AppLayout>
+                  <OwnerAppLayout>
                     <DashboardPage />
-                  </AppLayout>
+                  </OwnerAppLayout>
                 </ProtectedRoute>
               }
             />
             <Route
-              path="/app/businesses"
+              path="/app/shops/:shopId/ai-reviews"
               element={
                 <ProtectedRoute>
-                  <OwnerDashboardPage />
+                  <OwnerAppLayout>
+                    <AiReviewGeneratorPage />
+                  </OwnerAppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/shops/:shopId/review-page"
+              element={
+                <ProtectedRoute>
+                  <OwnerAppLayout>
+                    <ReviewPageManagePage />
+                  </OwnerAppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/shops/:shopId/qr"
+              element={
+                <ProtectedRoute>
+                  <OwnerAppLayout>
+                    <QrAutomationPage />
+                  </OwnerAppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/shops/:shopId/nfc"
+              element={
+                <ProtectedRoute>
+                  <OwnerAppLayout>
+                    <NfcManagementPage />
+                  </OwnerAppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/shops/:shopId/analytics"
+              element={
+                <ProtectedRoute>
+                  <OwnerAppLayout>
+                    <AnalyticsPage />
+                  </OwnerAppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/shops/:shopId/billing"
+              element={
+                <ProtectedRoute>
+                  <OwnerAppLayout>
+                    <BillingPage />
+                  </OwnerAppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/shops/:shopId/invoices"
+              element={
+                <ProtectedRoute>
+                  <OwnerAppLayout>
+                    <OwnerInvoicesPage />
+                  </OwnerAppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/shops/:shopId/settings"
+              element={
+                <ProtectedRoute>
+                  <OwnerAppLayout>
+                    <AccountSettingsPage />
+                  </OwnerAppLayout>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Owner Global Ledgers & Profile */}
+            <Route
+              path="/app/billing"
+              element={
+                <ProtectedRoute>
+                  <OwnerAppLayout>
+                    <BillingPage />
+                  </OwnerAppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/invoices"
+              element={
+                <ProtectedRoute>
+                  <OwnerAppLayout>
+                    <OwnerInvoicesPage />
+                  </OwnerAppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/profile"
+              element={
+                <ProtectedRoute>
+                  <OwnerAppLayout>
+                    <OwnerProfilePage />
+                  </OwnerAppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/support"
+              element={
+                <ProtectedRoute>
+                  <OwnerAppLayout>
+                    <HelpSupportPage />
+                  </OwnerAppLayout>
                 </ProtectedRoute>
               }
             />
@@ -258,11 +383,43 @@ export default function App() {
               path="/app/pricing"
               element={
                 <ProtectedRoute>
-                  <AppLayout>
+                  <OwnerAppLayout>
                     <ErrorBoundary fallbackTitle="Pricing Plans Unavailable">
                       <PricingPage />
                     </ErrorBoundary>
-                  </AppLayout>
+                  </OwnerAppLayout>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Backwards Compatible Aliases */}
+            <Route
+              path="/app/dashboard"
+              element={
+                <ProtectedRoute>
+                  <OwnerAppLayout>
+                    <DashboardPage />
+                  </OwnerAppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/dashboard/:businessId"
+              element={
+                <ProtectedRoute>
+                  <OwnerAppLayout>
+                    <DashboardPage />
+                  </OwnerAppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/businesses"
+              element={
+                <ProtectedRoute>
+                  <OwnerAppLayout>
+                    <OwnerDashboardPage />
+                  </OwnerAppLayout>
                 </ProtectedRoute>
               }
             />
@@ -270,9 +427,19 @@ export default function App() {
               path="/app/ai-generator"
               element={
                 <ProtectedRoute>
-                  <AppLayout>
+                  <OwnerAppLayout>
                     <AiReviewGeneratorPage />
-                  </AppLayout>
+                  </OwnerAppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/ai-reviews"
+              element={
+                <ProtectedRoute>
+                  <OwnerAppLayout>
+                    <AiReviewGeneratorPage />
+                  </OwnerAppLayout>
                 </ProtectedRoute>
               }
             />
@@ -280,9 +447,9 @@ export default function App() {
               path="/app/review-page"
               element={
                 <ProtectedRoute>
-                  <AppLayout>
+                  <OwnerAppLayout>
                     <ReviewPageManagePage />
-                  </AppLayout>
+                  </OwnerAppLayout>
                 </ProtectedRoute>
               }
             />
@@ -290,9 +457,9 @@ export default function App() {
               path="/app/business"
               element={
                 <ProtectedRoute>
-                  <AppLayout>
+                  <OwnerAppLayout>
                     <BusinessProfilePage />
-                  </AppLayout>
+                  </OwnerAppLayout>
                 </ProtectedRoute>
               }
             />
@@ -300,9 +467,9 @@ export default function App() {
               path="/app/business/:businessId"
               element={
                 <ProtectedRoute>
-                  <AppLayout>
+                  <OwnerAppLayout>
                     <BusinessProfilePage />
-                  </AppLayout>
+                  </OwnerAppLayout>
                 </ProtectedRoute>
               }
             />
@@ -314,9 +481,9 @@ export default function App() {
               path="/app/qr"
               element={
                 <ProtectedRoute>
-                  <AppLayout>
+                  <OwnerAppLayout>
                     <QrAutomationPage />
-                  </AppLayout>
+                  </OwnerAppLayout>
                 </ProtectedRoute>
               }
             />
@@ -328,9 +495,9 @@ export default function App() {
               path="/app/nfc"
               element={
                 <ProtectedRoute>
-                  <AppLayout>
+                  <OwnerAppLayout>
                     <NfcManagementPage />
-                  </AppLayout>
+                  </OwnerAppLayout>
                 </ProtectedRoute>
               }
             />
@@ -338,9 +505,9 @@ export default function App() {
               path="/app/analytics"
               element={
                 <ProtectedRoute>
-                  <AppLayout>
+                  <OwnerAppLayout>
                     <AnalyticsPage />
-                  </AppLayout>
+                  </OwnerAppLayout>
                 </ProtectedRoute>
               }
             />
@@ -348,19 +515,9 @@ export default function App() {
               path="/app/activity"
               element={
                 <ProtectedRoute>
-                  <AppLayout>
+                  <OwnerAppLayout>
                     <CustomerActivityPage />
-                  </AppLayout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/app/billing"
-              element={
-                <ProtectedRoute>
-                  <AppLayout>
-                    <BillingPage />
-                  </AppLayout>
+                  </OwnerAppLayout>
                 </ProtectedRoute>
               }
             />
@@ -368,9 +525,9 @@ export default function App() {
               path="/app/standees"
               element={
                 <ProtectedRoute>
-                  <AppLayout>
+                  <OwnerAppLayout>
                     <StandeeShopPage />
-                  </AppLayout>
+                  </OwnerAppLayout>
                 </ProtectedRoute>
               }
             />
@@ -379,22 +536,12 @@ export default function App() {
               element={<Navigate to="/app/standees" replace />}
             />
             <Route
-              path="/app/support"
-              element={
-                <ProtectedRoute>
-                  <AppLayout>
-                    <HelpSupportPage />
-                  </AppLayout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
               path="/app/settings"
               element={
                 <ProtectedRoute>
-                  <AppLayout>
+                  <OwnerAppLayout>
                     <AccountSettingsPage />
-                  </AppLayout>
+                  </OwnerAppLayout>
                 </ProtectedRoute>
               }
             />
@@ -570,6 +717,26 @@ export default function App() {
               <ProtectedRoute requireSuperAdmin={true}>
                 <SuperAdminLayout>
                   <SuperAdminSystemPage />
+                </SuperAdminLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/super-admin/owners"
+            element={
+              <ProtectedRoute requireSuperAdmin={true}>
+                <SuperAdminLayout>
+                  <SuperAdminClientsPage />
+                </SuperAdminLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/super-admin/shops"
+            element={
+              <ProtectedRoute requireSuperAdmin={true}>
+                <SuperAdminLayout>
+                  <SuperAdminBusinessesPage />
                 </SuperAdminLayout>
               </ProtectedRoute>
             }

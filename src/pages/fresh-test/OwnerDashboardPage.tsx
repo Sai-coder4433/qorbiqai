@@ -122,8 +122,9 @@ export const OwnerDashboardPage: React.FC = () => {
   const totalScans = allShops.reduce((acc, s) => acc + (s.scanCount || s.totalScans || 0), 0);
 
   const handleOpenShopDashboard = async (shopId: string) => {
+    if (!shopId) return;
     await selectBusiness(shopId);
-    navigate(`/app/dashboard/${shopId}`);
+    navigate(`/app/shops/${shopId}/dashboard`);
   };
 
   const handleLogout = async () => {

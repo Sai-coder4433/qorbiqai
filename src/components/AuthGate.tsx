@@ -13,12 +13,13 @@ export const AuthGate: React.FC<AuthGateProps> = ({ children, requireSuperAdmin 
   const { user, loading: authLoading } = useAuth();
   const { businesses, activeBusiness, loading: bizLoading } = useBusiness();
   const location = useLocation();
-  const params = useParams<{ businessId?: string }>();
+  const params = useParams<{ shopId?: string; businessId?: string }>();
+  const targetShopId = params.shopId || params.businessId;
 
   // Normalize path to prevent trailing slash mismatches (e.g. /app/ vs /app)
   const cleanPath = (location.pathname.replace(/\/+$/, '') || '/').toLowerCase();
 
-  // EXEMPT ROUTES: Pricing, Shop Management Hub (/app, /app/shops), Billing Return
+  // EXEMPT ROUTES: Pricing, Shop Management Hub (/app, /app/shops), Billing, Profile
   const isPricingRoute =
     cleanPath === '/app/pricing' ||
     cleanPath === '/pricing';
@@ -29,7 +30,10 @@ export const AuthGate: React.FC<AuthGateProps> = ({ children, requireSuperAdmin 
     cleanPath === '/app/shops/create' ||
     cleanPath === '/app/shops/new' ||
     cleanPath === '/shops/create' ||
-    cleanPath === '/app/businesses';
+    cleanPath === '/app/businesses' ||
+    cleanPath === '/app/invoices' ||
+    cleanPath === '/app/profile' ||
+    cleanPath === '/app/support';
 
   const isBillingRoute =
     cleanPath.startsWith('/app/billing') ||
@@ -116,8 +120,8 @@ export const AuthGate: React.FC<AuthGateProps> = ({ children, requireSuperAdmin 
 
   // 6. Resolve Target Business (from URL param or active selection)
   let targetBusiness = activeBusiness;
-  if (params.businessId) {
-    targetBusiness = businesses.find(b => b.id === params.businessId) || null;
+  if (targetShopId) {
+    targetBusiness = businesses.find(b => b.id === targetShopId) || null;
     if (!targetBusiness) {
       return (
         <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 font-sans">

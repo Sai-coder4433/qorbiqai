@@ -950,7 +950,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       const language = (body.language || 'English').toLowerCase();
       const rating = body.rating || 5;
       const topics = body.topics || body.cardTitles || ['Staff Hospitality', 'Service Quality'];
-      const topicsStr = Array.isArray(topics) ? topics.join(', ') : String(topics);
+      const rawTopicsStr = Array.isArray(topics) ? topics.join(', ') : String(topics);
+      const customerFeedback = (body.customerText || body.customerFeedback || '').trim();
+      const combinedDetails = [rawTopicsStr, customerFeedback ? `"${customerFeedback}"` : ''].filter(Boolean).join('. Specific details: ');
       const geminiKey = env.GEMINI_API_KEY;
 
       let draft = '';
@@ -959,10 +961,10 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         try {
           const prompt = `You are a real customer writing a Google review for "${businessName}".
 Rating: ${rating} out of 5 stars.
-Customer noticed and appreciated these aspects: ${topicsStr}.
+Customer noticed and appreciated these aspects: ${combinedDetails}.
 Language required: Write strictly in ${body.language || 'English'}.
-Length: Around 3 to 4 concise sentences.
-Tone: Warm, natural, authentic local customer style (not generic marketing fluff). If Marathi or Hindi, use everyday conversational vernacular that a local patron would post. Do not include quotes, hashtags, or bracketed text.`;
+Length: ${body.reviewLength === 'short' ? 'Short (1-2 sentences)' : body.reviewLength === 'long' ? 'Comprehensive (4-5 sentences)' : 'Medium (2-3 sentences)'}.
+Tone: ${body.tone || 'Warm, natural, authentic local customer style (not generic marketing fluff)'}. If Marathi or Hindi, use everyday conversational vernacular that a local patron would post. Do not include quotes, hashtags, or bracketed text.`;
 
           const gRes = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
