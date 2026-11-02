@@ -217,3 +217,4 @@ export function downloadInvoicePdf(inv: InvoiceData) {
   const doc = generateInvoicePdf(inv);
   doc.save(`${inv.invoiceNumber || 'Invoice'}_QorbiqAI.pdf`);
 }
+

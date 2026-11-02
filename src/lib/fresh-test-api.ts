@@ -996,6 +996,7 @@ export const freshTestApi = {
   }> {
     const payload = {
       ...params,
+      topics: params.selectedTopics || params.selectedExperienceCards || (params as any).topics || [],
       requestId: params.requestId || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'req_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8))
     };
     const res = await fetch('/api/ai/review-draft', {

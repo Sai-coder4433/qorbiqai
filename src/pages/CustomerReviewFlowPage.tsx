@@ -123,6 +123,7 @@ export const CustomerReviewFlowPage: React.FC = () => {
           customerText: customerNote.trim(),
           customerFeedback: customerNote.trim(),
           selectedTopics: selectedChips,
+          topics: selectedChips,
           language: selectedLang,
           businessName,
           generationNumber: nextIter

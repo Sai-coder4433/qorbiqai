@@ -946,25 +946,46 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   if (url.pathname === '/api/ai/review-draft' && request.method === 'POST') {
     try {
       const body: any = await request.json().catch(() => ({}));
-      const businessName = body.businessName || 'Business';
+      const businessName = (body.businessName || 'Business').trim();
       const language = (body.language || 'English').toLowerCase();
-      const rating = body.rating || 5;
-      const topics = body.topics || body.cardTitles || ['Staff Hospitality', 'Service Quality'];
-      const rawTopicsStr = Array.isArray(topics) ? topics.join(', ') : String(topics);
-      const customerFeedback = (body.customerText || body.customerFeedback || '').trim();
-      const combinedDetails = [rawTopicsStr, customerFeedback ? `"${customerFeedback}"` : ''].filter(Boolean).join('. Specific details: ');
-      const geminiKey = env.GEMINI_API_KEY;
+      const rating = Number(body.rating) || 5;
+      const reviewLength = (body.reviewLength || 'medium').toLowerCase();
 
+      // Safely extract topics from any supported payload key
+      const rawTopics = body.selectedTopics || body.topics || body.cardTitles || body.selectedExperienceCards || [];
+      const topicList: string[] = Array.isArray(rawTopics)
+        ? rawTopics.map((t: any) => String(t || '').trim()).filter(Boolean)
+        : (typeof rawTopics === 'string' && rawTopics.trim() ? [rawTopics.trim()] : []);
+
+      const topicsStr = topicList.length > 0 ? topicList.join(', ') : '';
+      const customerFeedback = (body.customerText || body.customerFeedback || '').trim();
+
+      const detailsList: string[] = [];
+      if (topicsStr) detailsList.push(`Appreciated aspects: ${topicsStr}`);
+      if (customerFeedback) detailsList.push(`Customer specific notes: "${customerFeedback}"`);
+      const combinedDetails = detailsList.length > 0
+        ? detailsList.join('. ')
+        : 'Quality service, polite staff, and positive customer experience';
+
+      const geminiKey = env.GEMINI_API_KEY;
       let draft = '';
 
       if (geminiKey) {
         try {
-          const prompt = `You are a real customer writing a Google review for "${businessName}".
+          const lengthInstruction = reviewLength === 'short'
+            ? 'Short (strictly 1 sentence, 8-20 words)'
+            : reviewLength === 'long'
+            ? 'Comprehensive (4-5 sentences, 50-90 words)'
+            : 'Medium (2-3 sentences, 25-50 words)';
+
+          const prompt = `You are a real customer writing a genuine Google review for "${businessName}".
 Rating: ${rating} out of 5 stars.
 Customer noticed and appreciated these aspects: ${combinedDetails}.
 Language required: Write strictly in ${body.language || 'English'}.
-Length: ${body.reviewLength === 'short' ? 'Short (1-2 sentences)' : body.reviewLength === 'long' ? 'Comprehensive (4-5 sentences)' : 'Medium (2-3 sentences)'}.
-Tone: ${body.tone || 'Warm, natural, authentic local customer style (not generic marketing fluff)'}. If Marathi or Hindi, use everyday conversational vernacular that a local patron would post. Do not include quotes, hashtags, or bracketed text.`;
+Length: ${lengthInstruction}.
+Tone: Authentic, natural customer tone based solely on the customer's real experience. Do not invent facts, discounts, awards, or medical/legal claims.
+If Marathi or Hindi, use natural spoken vernacular that local customers use in everyday life in India.
+Do not include quotation marks, hashtags, star emojis, or bracketed text. Return only the review text.`;
 
           const gRes = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
@@ -988,14 +1009,78 @@ Tone: ${body.tone || 'Warm, natural, authentic local customer style (not generic
       }
 
       if (!draft) {
-        if (language.includes('marathi') || language.includes('मराठी')) {
-          draft = `${businessName} मधील अनुभव अतिशय समाधानकारक होता. येथील सर्व्हिस आणि कर्मचाऱ्यांची वागणूक खूप नम्र आहे. विशेषतः ${topicsStr} या गोष्टी आम्हाला विशेष आवडल्या. कुटुंबासह आणि मित्रांसोबत भेट देण्यासाठी ही उत्तम जागा आहे. नक्कीच पुन्हा भेट देणार!`;
-        } else if (language.includes('hindi') || language.includes('हिंदी')) {
-          draft = `${businessName} का अनुभव सच में बहुत ही शानदार रहा। स्टाफ बहुत ही विनम्र और मददगार है। यहाँ ${topicsStr} की सुविधा और क्वालिटी बहुत बढ़िया है। सभी को यहाँ ज़रूर आना चाहिए। 5 स्टार रेटिंग!`;
+        const isMarathi = language.includes('marathi') || language.includes('मराठी') || language === 'mr';
+        const isHindi = language.includes('hindi') || language.includes('हिंदी') || language === 'hi';
+
+        if (isMarathi) {
+          if (reviewLength === 'short') {
+            if (customerFeedback && topicsStr) {
+              draft = `${businessName} मधील अनुभव अतिशय चांगला होता, विशेषतः येथील ${topicsStr} आणि ${customerFeedback}!`;
+            } else if (topicsStr) {
+              draft = `${businessName} मधील अनुभव अतिशय चांगला होता, विशेषतः येथील ${topicsStr} आणि उत्तम सर्व्हिस!`;
+            } else if (customerFeedback) {
+              draft = `${businessName} मधील अनुभव खूप छान होता — ${customerFeedback}. उत्तम सर्व्हिस!`;
+            } else {
+              draft = `${businessName} मधील अनुभव खूप समाधानकारक होता, येथील नम्र कर्मचारी आणि दर्जेदार सर्व्हिस आवडली!`;
+            }
+          } else if (reviewLength === 'long') {
+            const topicPart = topicsStr ? ` विशेषतः ${topicsStr} या बाबतीत सेवा अत्यंत दर्जेदार आणि समाधानकारक वाटली.` : '';
+            const feedbackPart = customerFeedback ? ` आमचा विशेष अनुभव: ${customerFeedback}.` : '';
+            draft = `${businessName} ला भेट दिली आणि आमचा अनुभव अतिशय उत्तम राहिला. येथील कर्मचारी खूप नम्र, तत्पर आणि आदरातिथ्य करणारे आहेत.${topicPart}${feedbackPart} संपूर्ण व्यवस्था अतिशय नीटनेटकी आणि विश्वासार्ह आहे. कुटुंबासह किंवा मित्रांसोबत भेट देण्यासाठी ही उत्तम जागा आहे. ५ स्टार रेटिंग!`;
+          } else {
+            // Medium
+            const topicPart = topicsStr ? ` विशेषतः येथील ${topicsStr} आम्हाला खूप आवडले.` : ' येथील सेवा आणि कर्मचाऱ्यांचे सहकार्य खूप छान आहे.';
+            const feedbackPart = customerFeedback ? ` ${customerFeedback}.` : '';
+            draft = `${businessName} मधील अनुभव अतिशय समाधानकारक होता. येथील कर्मचारी खूप नम्र आणि सहकार्य करणारे आहेत.${topicPart}${feedbackPart} नक्कीच पुन्हा भेट देणार, सर्वांना उत्तम शिफारस!`;
+          }
+        } else if (isHindi) {
+          if (reviewLength === 'short') {
+            if (customerFeedback && topicsStr) {
+              draft = `${businessName} का अनुभव बहुत ही शानदार रहा, खासकर यहाँ का ${topicsStr} और ${customerFeedback}!`;
+            } else if (topicsStr) {
+              draft = `${businessName} का अनुभव बहुत ही शानदार रहा, खासकर यहाँ का ${topicsStr} और बेहतरीन सर्विस!`;
+            } else if (customerFeedback) {
+              draft = `${businessName} में बहुत अच्छा अनुभव रहा — ${customerFeedback}. बहुत ही बढ़िया सर्विस!`;
+            } else {
+              draft = `${businessName} का अनुभव बहुत ही अच्छा रहा, विनम्र स्टाफ और बेहतरीन सेवा!`;
+            }
+          } else if (reviewLength === 'long') {
+            const topicPart = topicsStr ? ` खास तौर पर ${topicsStr} की सुविधा और गुणवत्ता बहुत ही प्रभावशाली लगी।` : '';
+            const feedbackPart = customerFeedback ? ` हमारा व्यक्तिगत अनुभव: ${customerFeedback}।` : '';
+            draft = `${businessName} में हमारा अनुभव बेहद सुखद और बेहतरीन रहा। यहाँ का स्टाफ बहुत ही पेशेवर, विनम्र और सहयोग करने वाला है।${topicPart}${feedbackPart} पूरी सेवा समय पर और बहुत ही अच्छे ढंग से मिली। मैं सभी को यहाँ आने की पूरी सिफारिश करता हूँ।`;
+          } else {
+            // Medium
+            const topicPart = topicsStr ? ` यहाँ ${topicsStr} की व्यवस्था और क्वालिटी बहुत बढ़िया है।` : ' यहाँ की सर्विस और स्टाफ का व्यवहार बहुत बढ़िया है।';
+            const feedbackPart = customerFeedback ? ` ${customerFeedback}।` : '';
+            draft = `${businessName} का अनुभव सच में बहुत ही शानदार रहा। स्टाफ बहुत ही विनम्र और मददगार है।${topicPart}${feedbackPart} सभी को यहाँ ज़रूर आना चाहिए। 5 स्टार रेटिंग!`;
+          }
         } else {
-          draft = `Had a fantastic experience at ${businessName}! The customer hospitality and service were truly outstanding. Particularly impressed with the ${topicsStr}. Highly recommend visiting, and will definitely be coming back!`;
+          // English
+          if (reviewLength === 'short') {
+            if (customerFeedback && topicsStr) {
+              draft = `Had a great experience at ${businessName} — particularly impressed with ${topicsStr}, and ${customerFeedback}.`;
+            } else if (topicsStr) {
+              draft = `Had a great experience at ${businessName} — particularly impressed with the ${topicsStr} and excellent service!`;
+            } else if (customerFeedback) {
+              draft = `Great experience at ${businessName} — ${customerFeedback}. Truly satisfied with the service!`;
+            } else {
+              draft = `Had a wonderful experience at ${businessName} — polite staff, prompt service, and great overall quality!`;
+            }
+          } else if (reviewLength === 'long') {
+            const topicPart = topicsStr ? ` In particular, the ${topicsStr} stood out during our visit.` : '';
+            const feedbackPart = customerFeedback ? ` Also wanted to highlight: ${customerFeedback}.` : '';
+            draft = `Visited ${businessName} and was thoroughly pleased with the overall experience. The environment is welcoming and the staff is genuinely attentive and helpful.${topicPart}${feedbackPart} Everything was handled smoothly and professionally from start to finish. I would gladly recommend ${businessName} to anyone looking for great service!`;
+          } else {
+            // Medium
+            const topicPart = topicsStr ? ` Particularly impressed with the ${topicsStr}.` : ' The customer hospitality and service were truly outstanding.';
+            const feedbackPart = customerFeedback ? ` ${customerFeedback}.` : '';
+            draft = `Had a fantastic experience at ${businessName}! The customer hospitality and service were truly outstanding.${topicPart}${feedbackPart} Highly recommend visiting and will definitely be coming back!`;
+          }
         }
       }
+
+      // Sanitize any extra quotes or weird formatting
+      draft = draft.replace(/^["']|["']$/g, '').trim();
 
       const wordCount = draft.split(/\s+/).filter(Boolean).length;
       return jsonResponse({
@@ -1004,7 +1089,7 @@ Tone: ${body.tone || 'Warm, natural, authentic local customer style (not generic
         language: body.language || 'English',
         wordCount,
         rating,
-        model: geminiKey ? 'gemini-1.5-flash' : 'localized-engine'
+        model: geminiKey && draft ? 'gemini-1.5-flash' : 'localized-engine'
       });
     } catch (aiErr: any) {
       return jsonResponse({ error: aiErr.message || 'Failed to generate review draft' }, 500);
