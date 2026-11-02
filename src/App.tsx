@@ -182,7 +182,9 @@ export default function App() {
               path="/app"
               element={
                 <ProtectedRoute>
-                  <OwnerDashboardPage />
+                  <ErrorBoundary fallbackTitle="Owner Portal Notice">
+                    <OwnerDashboardPage />
+                  </ErrorBoundary>
                 </ProtectedRoute>
               }
             />
@@ -190,7 +192,9 @@ export default function App() {
               path="/app/shops"
               element={
                 <ProtectedRoute>
-                  <OwnerDashboardPage />
+                  <ErrorBoundary fallbackTitle="Owner Portal Notice">
+                    <OwnerDashboardPage />
+                  </ErrorBoundary>
                 </ProtectedRoute>
               }
             />

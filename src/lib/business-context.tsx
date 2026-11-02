@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth } from './auth-context.tsx';
 import { freshTestApi, BusinessData, SubscriptionData, CreditsOverview } from './fresh-test-api.ts';
+import { fetchOwnerShopsFromFirestore } from './firestore-sync.ts';
 
 export interface BusinessWithSub extends BusinessData {
   subscription?: SubscriptionData & { business?: any };
@@ -80,7 +81,20 @@ export const BusinessProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       ]);
 
       const subs = subRes.subscriptions || [];
-      const bizList = bizRes.businesses || [];
+      let bizList = bizRes.businesses || [];
+
+      // Direct Firestore fallback: If edge server returned 0 businesses for this authenticated owner,
+      // load directly from Firestore using the client SDK
+      if (bizList.length === 0 && user?.uid) {
+        try {
+          const fsShops = await fetchOwnerShopsFromFirestore(user.uid);
+          if (fsShops && fsShops.length > 0) {
+            bizList = fsShops;
+          }
+        } catch (fsErr) {
+          console.warn('[BusinessContext] Firestore fallback notice:', fsErr);
+        }
+      }
 
       // Link each business to its isolated subscription
       const merged: BusinessWithSub[] = bizList.map(b => {

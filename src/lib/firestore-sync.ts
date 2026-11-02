@@ -5,6 +5,8 @@ import {
   updateDoc,
   collection,
   getDocs,
+  query,
+  where,
   serverTimestamp
 } from 'firebase/firestore';
 import { db } from './firebase.ts';
@@ -177,27 +179,72 @@ export async function syncBusinessToFirestore(business: Partial<FirestoreBusines
 
 /**
  * Fetch all shops owned by a specific owner directly from Firestore
+ * Queries both businesses and shops collections with rule-compliant filters
  */
 export async function fetchOwnerShopsFromFirestore(ownerUid: string): Promise<any[]> {
   if (!db || !ownerUid) return [];
+  const resultsMap = new Map<string, any>();
   try {
-    const qBiz = collection(db, 'businesses');
-    const snap = await getDocs(qBiz);
-    const results: any[] = [];
-    snap.forEach(docSnap => {
-      const data = docSnap.data();
-      if (data.ownerUid === ownerUid || data.ownerId === ownerUid) {
-        results.push({
-          id: docSnap.id,
-          shopId: docSnap.id,
-          ...data
-        });
+    // 1. Query businesses collection by ownerUid
+    try {
+      const qBizUid = query(collection(db, 'businesses'), where('ownerUid', '==', ownerUid));
+      const snapBizUid = await getDocs(qBizUid);
+      snapBizUid.forEach(d => {
+        resultsMap.set(d.id, { id: d.id, shopId: d.id, ...d.data() });
+      });
+    } catch (e1: any) {
+      console.warn('[FirestoreSync] businesses by ownerUid notice:', e1.message);
+    }
+
+    // 2. Query businesses collection by ownerId (legacy fallback)
+    try {
+      const qBizId = query(collection(db, 'businesses'), where('ownerId', '==', ownerUid));
+      const snapBizId = await getDocs(qBizId);
+      snapBizId.forEach(d => {
+        resultsMap.set(d.id, { id: d.id, shopId: d.id, ...d.data() });
+      });
+    } catch (e2: any) {
+      console.warn('[FirestoreSync] businesses by ownerId notice:', e2.message);
+    }
+
+    // 3. Query shops collection by ownerUid
+    try {
+      const qShopsUid = query(collection(db, 'shops'), where('ownerUid', '==', ownerUid));
+      const snapShopsUid = await getDocs(qShopsUid);
+      snapShopsUid.forEach(d => {
+        const existing = resultsMap.get(d.id) || {};
+        resultsMap.set(d.id, { ...existing, id: d.id, shopId: d.id, ...d.data() });
+      });
+    } catch (e3: any) {
+      console.warn('[FirestoreSync] shops by ownerUid notice:', e3.message);
+    }
+
+    // 4. Query shops collection by ownerId
+    try {
+      const qShopsId = query(collection(db, 'shops'), where('ownerId', '==', ownerUid));
+      const snapShopsId = await getDocs(qShopsId);
+      snapShopsId.forEach(d => {
+        const existing = resultsMap.get(d.id) || {};
+        resultsMap.set(d.id, { ...existing, id: d.id, shopId: d.id, ...d.data() });
+      });
+    } catch (e4: any) {
+      console.warn('[FirestoreSync] shops by ownerId notice:', e4.message);
+    }
+
+    // 5. Check direct doc biz_${ownerUid}
+    try {
+      const directRef = doc(db, 'businesses', `biz_${ownerUid}`);
+      const directSnap = await getDoc(directRef);
+      if (directSnap.exists()) {
+        const d = directSnap.data();
+        resultsMap.set(directSnap.id, { id: directSnap.id, shopId: directSnap.id, ...d });
       }
-    });
-    return results;
+    } catch {}
+
+    return Array.from(resultsMap.values());
   } catch (err: any) {
     console.warn('[FirestoreSync] Failed to fetch owner shops:', err.message);
-    return [];
+    return Array.from(resultsMap.values());
   }
 }
 

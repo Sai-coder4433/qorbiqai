@@ -15,8 +15,35 @@ export const AuthGate: React.FC<AuthGateProps> = ({ children, requireSuperAdmin 
   const location = useLocation();
   const params = useParams<{ businessId?: string }>();
 
-  // Full page skeleton loader — ensures zero dashboard flash before validation
-  if (authLoading || (user && bizLoading)) {
+  // Normalize path to prevent trailing slash mismatches (e.g. /app/ vs /app)
+  const cleanPath = (location.pathname.replace(/\/+$/, '') || '/').toLowerCase();
+
+  // EXEMPT ROUTES: Pricing, Shop Management Hub (/app, /app/shops), Billing Return
+  const isPricingRoute =
+    cleanPath === '/app/pricing' ||
+    cleanPath === '/pricing';
+
+  const isShopManagementRoute =
+    cleanPath === '/app' ||
+    cleanPath === '/app/shops' ||
+    cleanPath === '/app/shops/create' ||
+    cleanPath === '/app/shops/new' ||
+    cleanPath === '/shops/create' ||
+    cleanPath === '/app/businesses';
+
+  const isBillingRoute =
+    cleanPath.startsWith('/app/billing') ||
+    cleanPath.startsWith('/billing');
+
+  const isOnboardingRoute =
+    cleanPath.startsWith('/onboarding') ||
+    cleanPath.startsWith('/app/onboarding');
+
+  const isExemptFromBizLoading = isPricingRoute || isShopManagementRoute || isBillingRoute;
+
+  // 1. Authentication State Resolution
+  // Only block exempt routes while Firebase Auth resolves
+  if (authLoading || (!isExemptFromBizLoading && user && bizLoading)) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 font-sans">
         <div className="w-full max-w-sm bg-white rounded-3xl border border-slate-200/80 p-8 shadow-sm text-center space-y-4 animate-pulse">
@@ -35,7 +62,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ children, requireSuperAdmin 
     );
   }
 
-  // 1. Not Authenticated -> Redirect to Login
+  // 2. Not Authenticated -> Redirect to Login
   if (!user) {
     if (requireSuperAdmin) {
       return <Navigate to="/super-admin/login" replace />;
@@ -44,7 +71,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ children, requireSuperAdmin 
     return <Navigate to={`/login?redirect=${encodeURIComponent(fullRedirect)}`} replace />;
   }
 
-  // 2. Super Admin Check
+  // 3. Super Admin Authorization Check
   if (requireSuperAdmin && user.role !== 'SUPER_ADMIN') {
     return (
       <div className="min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center p-6 font-sans">
@@ -76,40 +103,18 @@ export const AuthGate: React.FC<AuthGateProps> = ({ children, requireSuperAdmin 
     return <>{children}</>;
   }
 
-  // 3. EXEMPT ROUTES: Pricing, Shop Management, Hub, Billing Return
-  // Critical Fix: These routes must NEVER be intercepted or redirected to onboarding,
-  // preventing infinite redirect loops and blank white screens!
-  const isPricingRoute =
-    location.pathname === '/app/pricing' ||
-    location.pathname === '/pricing';
-
-  const isShopManagementRoute =
-    location.pathname === '/app' ||
-    location.pathname === '/app/shops' ||
-    location.pathname === '/app/shops/create' ||
-    location.pathname === '/app/shops/new' ||
-    location.pathname === '/shops/create' ||
-    location.pathname === '/app/businesses';
-
-  const isBillingRoute =
-    location.pathname.startsWith('/app/billing') ||
-    location.pathname.startsWith('/billing');
-
-  const isOnboardingRoute =
-    location.pathname.startsWith('/onboarding') ||
-    location.pathname.startsWith('/app/onboarding');
-
-  // Immediately allow exempt routes to render
+  // 4. Immediately allow exempt routes to render (Owner Portal /app, Pricing, Billing)
+  // These routes DO NOT depend on a pre-selected business or completed onboarding!
   if (isPricingRoute || isShopManagementRoute || isBillingRoute) {
     return <>{children}</>;
   }
 
-  // 4. User has ZERO businesses -> route to Pricing to purchase first plan
+  // 5. User has ZERO businesses -> route to Pricing to purchase first plan
   if (businesses.length === 0) {
     return <Navigate to="/app/pricing" replace />;
   }
 
-  // 5. Resolve Target Business (from URL param or active selection)
+  // 6. Resolve Target Business (from URL param or active selection)
   let targetBusiness = activeBusiness;
   if (params.businessId) {
     targetBusiness = businesses.find(b => b.id === params.businessId) || null;
@@ -120,16 +125,18 @@ export const AuthGate: React.FC<AuthGateProps> = ({ children, requireSuperAdmin 
             <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto">
               <ShieldAlert className="w-6 h-6" />
             </div>
-            <h2 className="text-lg font-bold text-slate-900">403 — Access Denied</h2>
+            <h2 className="text-lg font-bold text-slate-900">Workspace Notice</h2>
             <p className="text-xs text-slate-600">
-              You do not have permission to view or manage this business workspace.
+              The selected business workspace is being loaded or could not be found.
             </p>
-            <Link
-              to="/app"
-              className="inline-flex items-center justify-center px-5 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-semibold hover:bg-blue-700 transition"
-            >
-              Return to Your Shops Hub
-            </Link>
+            <div className="pt-2 flex items-center justify-center gap-3">
+              <Link
+                to="/app"
+                className="inline-flex items-center justify-center px-5 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-semibold hover:bg-blue-700 transition"
+              >
+                Go to Owner Portal (My Shops)
+              </Link>
+            </div>
           </div>
         </div>
       );
@@ -149,11 +156,11 @@ export const AuthGate: React.FC<AuthGateProps> = ({ children, requireSuperAdmin 
   const isOnboardingComplete =
     targetBusiness.onboardingStatus === 'COMPLETED' || Boolean(targetBusiness.onboardingCompleted);
 
-  // 6. If business onboarding is INCOMPLETE:
+  // 7. If business onboarding is INCOMPLETE:
   if (!isOnboardingComplete) {
     // If unpaid, intercept attempts to enter dashboard or onboarding
     if (!isPaid) {
-      if (location.pathname.startsWith('/app/dashboard') || isOnboardingRoute) {
+      if (cleanPath.startsWith('/app/dashboard') || isOnboardingRoute) {
         return <Navigate to={`/app/pricing?shopId=${targetBusiness.id}`} replace />;
       }
     }
@@ -165,7 +172,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ children, requireSuperAdmin 
     return <>{children}</>;
   }
 
-  // 7. If business onboarding is COMPLETE:
+  // 8. If business onboarding is COMPLETE:
   // Cannot re-enter onboarding
   if (isOnboardingRoute) {
     return <Navigate to={`/app/dashboard/${targetBusiness.id}`} replace />;

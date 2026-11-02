@@ -326,16 +326,20 @@ export const OwnerDashboardPage: React.FC = () => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredShops.map(shop => {
+              const shopId = String(shop.id || shop.shopId || '');
               const isPaid = shop.paymentStatus === 'paid' || shop.paymentStatus === 'PAID';
               const isCompleted = shop.onboardingStatus === 'COMPLETED' || shop.onboardingCompleted;
               const isLaunched = isPaid && isCompleted;
               const planTitle = shop.planId === 'qorbiq_12_months' ? 'Qorbiq AI – 12 Months' : (isPaid ? 'Qorbiq AI – 6 Months' : 'No Active Plan');
-              const code = shop.uniqueQrCode || (shop.id ? `code_${shop.id.replace('biz_', '').substring(0, 8)}` : '');
+              const code = shop.uniqueQrCode || (shopId ? `code_${shopId.replace('biz_', '').substring(0, 8)}` : '');
               const dynamicUrl = `https://qorbiqai.com/r/${code}`;
+
+              const shopTitle = String(shop.shopName || shop.businessName || 'Unnamed Shop');
+              const shopCat = String(shop.category || 'general_retail').replace(/_/g, ' ');
 
               return (
                 <div
-                  key={shop.id}
+                  key={shopId || Math.random().toString()}
                   className="bg-white rounded-3xl border border-slate-200 p-6 flex flex-col justify-between space-y-5 hover:shadow-md transition-all"
                 >
                   {/* Shop Header */}
@@ -343,14 +347,14 @@ export const OwnerDashboardPage: React.FC = () => {
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 font-extrabold text-base shrink-0">
-                          {shop.shopName ? shop.shopName.charAt(0).toUpperCase() : 'S'}
+                          {shopTitle.charAt(0).toUpperCase()}
                         </div>
                         <div>
                           <h3 className="font-bold text-base text-slate-900 leading-snug truncate max-w-[180px]">
-                            {shop.shopName || shop.businessName || 'Unnamed Shop'}
+                            {shopTitle}
                           </h3>
                           <div className="text-[11px] text-slate-400 capitalize">
-                            {shop.category ? shop.category.replace(/_/g, ' ') : 'General Retail'}
+                            {shopCat}
                           </div>
                         </div>
                       </div>
