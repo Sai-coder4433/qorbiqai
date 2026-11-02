@@ -48,9 +48,13 @@ export const BusinessProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         freshTestApi.getCreditsOverview().catch(() => null)
       ]);
 
-      if (bizData) {
-        const sub = subsList.find(s => s.businessId === bizData.id || s.business?.id === bizData.id);
-        const enriched: BusinessWithSub = { ...bizData, subscription: sub };
+      // Resolve business record - prefer api/firestore result, fallback to businesses array
+      const fallbackBiz = businesses.find(b => b.id === businessId || b.shopId === businessId);
+      const resolvedBiz = (bizData && bizData.businessName) ? { ...fallbackBiz, ...bizData } : fallbackBiz;
+
+      if (resolvedBiz) {
+        const sub = subsList.find(s => s.businessId === resolvedBiz.id || s.business?.id === resolvedBiz.id);
+        const enriched: BusinessWithSub = { ...resolvedBiz, subscription: sub };
         setActiveBusiness(enriched);
         setActiveSubscription(sub || null);
       } else {
@@ -63,7 +67,7 @@ export const BusinessProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } catch (err) {
       console.warn('[BusinessContext] Error loading business data:', err);
     }
-  }, []);
+  }, [businesses]);
 
   const refreshBusinesses = useCallback(async () => {
     if (!user) {

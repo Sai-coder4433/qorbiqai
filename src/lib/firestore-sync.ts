@@ -241,11 +241,53 @@ export async function fetchOwnerShopsFromFirestore(ownerUid: string): Promise<an
       }
     } catch {}
 
+    // 6. Check direct doc biz_${ownerUid} in shops
+    try {
+      const directShopRef = doc(db, 'shops', `biz_${ownerUid}`);
+      const directShopSnap = await getDoc(directShopRef);
+      if (directShopSnap.exists()) {
+        const d = directShopSnap.data();
+        const existing = resultsMap.get(directShopSnap.id) || {};
+        resultsMap.set(directShopSnap.id, { ...existing, id: directShopSnap.id, shopId: directShopSnap.id, ...d });
+      }
+    } catch {}
+
     return Array.from(resultsMap.values());
   } catch (err: any) {
     console.warn('[FirestoreSync] Failed to fetch owner shops:', err.message);
     return Array.from(resultsMap.values());
   }
+}
+
+/**
+ * Fetch a single shop/business directly from Firestore by ID with owner verification
+ */
+export async function fetchSingleShopFromFirestore(shopId: string, ownerUid?: string): Promise<any | null> {
+  if (!db || !shopId) return null;
+  try {
+    // 1. Try shops collection
+    const shopRef = doc(db, 'shops', shopId);
+    const shopSnap = await getDoc(shopRef);
+    if (shopSnap.exists()) {
+      const data = shopSnap.data();
+      if (!ownerUid || data.ownerUid === ownerUid || data.ownerId === ownerUid) {
+        return { id: shopSnap.id, shopId: shopSnap.id, ...data };
+      }
+    }
+
+    // 2. Try businesses collection
+    const bizRef = doc(db, 'businesses', shopId);
+    const bizSnap = await getDoc(bizRef);
+    if (bizSnap.exists()) {
+      const data = bizSnap.data();
+      if (!ownerUid || data.ownerUid === ownerUid || data.ownerId === ownerUid) {
+        return { id: bizSnap.id, shopId: bizSnap.id, ...data };
+      }
+    }
+  } catch (err: any) {
+    console.warn('[FirestoreSync] fetchSingleShop error:', err.message);
+  }
+  return null;
 }
 
 /**

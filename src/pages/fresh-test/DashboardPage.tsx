@@ -26,12 +26,16 @@ import {
   SubscriptionData,
   BusinessData
 } from '../../lib/fresh-test-api.ts';
+import { useAuth } from '../../lib/auth-context.tsx';
 import { useBusiness } from '../../lib/business-context.tsx';
 
 export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { businessId: routeBusinessId } = useParams<{ businessId?: string }>();
+  const params = useParams<{ businessId?: string; shopId?: string }>();
+  const routeBusinessId = params.shopId || params.businessId;
+
+  const { user, loading: authLoading } = useAuth();
   const {
     businesses,
     activeBusiness,
@@ -39,10 +43,12 @@ export const DashboardPage: React.FC = () => {
     activeCredits,
     activeTopics,
     selectBusiness,
-    switching
+    switching,
+    loading: bizLoading
   } = useBusiness();
 
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [primaryQr, setPrimaryQr] = useState<QrCodeData | null>(null);
   const [bannerMessage, setBannerMessage] = useState<string | null>(
@@ -52,33 +58,83 @@ export const DashboardPage: React.FC = () => {
     (location.state as any)?.successMessage || null
   );
 
-  // Resolve which business to display - route param or active context
-  const displayBusiness = activeBusiness;
+  // Helper to normalize IDs for comparison (handles letter l vs i vs 1, O vs 0)
+  const normalizeId = (s: string) =>
+    s.toLowerCase().replace(/[^a-z0-9]/g, '').replace(/[li1]/g, '1').replace(/[o0]/g, '0');
 
+  // Find shop matching the route parameter among the owner's shops
+  const matchedShop = routeBusinessId
+    ? (businesses.find(b => b.id === routeBusinessId || b.shopId === routeBusinessId) ||
+       businesses.find(b => normalizeId(b.id) === normalizeId(routeBusinessId)))
+    : null;
+
+  // Resolved business to display: matched shop, or active shop, or first owned shop
+  const displayBusiness = matchedShop || activeBusiness || businesses[0] || null;
+
+  // Keep business-context in sync with route parameter
   useEffect(() => {
-    if (routeBusinessId && activeBusiness && routeBusinessId !== activeBusiness.id) {
-      selectBusiness(routeBusinessId);
+    if (routeBusinessId && matchedShop && activeBusiness && activeBusiness.id !== matchedShop.id) {
+      selectBusiness(matchedShop.id);
     }
-  }, [routeBusinessId]);
+  }, [routeBusinessId, matchedShop?.id, activeBusiness?.id, selectBusiness]);
 
+  // Main data loading effect
   useEffect(() => {
-    if (!switching && activeBusiness) {
-      loadDashboardData(activeBusiness.id);
-    } else if (!switching && !activeBusiness && businesses.length === 0) {
-      // No businesses - send to pricing
-      navigate('/app/pricing', { replace: true });
-    }
-  }, [activeBusiness?.id, switching]);
+    let isMounted = true;
 
-  const loadDashboardData = async (bizId: string) => {
+    // Wait for auth initialization
+    if (authLoading || bizLoading) {
+      return;
+    }
+
+    // Require authenticated user
+    if (!user) {
+      navigate('/login', { replace: true });
+      return;
+    }
+
+    // If owner has zero shops registered
+    if (businesses.length === 0) {
+      setLoading(false);
+      return;
+    }
+
+    // If a route parameter was explicitly provided but does not match any shop owned by this owner
+    if (routeBusinessId && !matchedShop && businesses.length > 0) {
+      setError(`Shop "${routeBusinessId}" was not found or does not belong to your account.`);
+      setLoading(false);
+      return;
+    }
+
+    const target = displayBusiness;
+    if (!target) {
+      setLoading(false);
+      return;
+    }
+
+    loadDashboardData(target.id, isMounted);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [displayBusiness?.id, authLoading, bizLoading, user?.uid, businesses.length, routeBusinessId, matchedShop]);
+
+  const loadDashboardData = async (bizId: string, isMounted: boolean = true) => {
     try {
       setLoading(true);
+      setError(null);
 
-      // Validate onboarding is COMPLETED before showing dashboard
-      const biz = await freshTestApi.getBusiness(bizId).catch(() => null);
-      if (!biz || (biz.onboardingStatus !== 'COMPLETED' && !biz.onboardingCompleted)) {
-        navigate(`/app/onboarding/${bizId}`, { replace: true });
-        return;
+      // Check onboarding completion from the authoritative source of truth
+      const currentBiz = businesses.find(b => b.id === bizId) || activeBusiness;
+      const isComplete = currentBiz?.onboardingStatus === 'COMPLETED' || Boolean(currentBiz?.onboardingCompleted);
+
+      // Only if onboarding is genuinely incomplete do we inspect and redirect
+      if (!isComplete) {
+        const biz = await freshTestApi.getBusiness(bizId).catch(() => null);
+        if (biz && biz.onboardingStatus !== 'COMPLETED' && !biz.onboardingCompleted) {
+          navigate(`/app/onboarding/${bizId}`, { replace: true });
+          return;
+        }
       }
 
       const [an, qrs] = await Promise.all([
@@ -86,53 +142,137 @@ export const DashboardPage: React.FC = () => {
         freshTestApi.getQrCodes().catch(() => [])
       ]);
 
-      setAnalytics(an);
+      if (!isMounted) return;
+
+      const fallbackAnalytics: AnalyticsData = {
+        totalScans: 0,
+        scansToday: 0,
+        scansThisWeek: 0,
+        scansThisMonth: 0,
+        activeQrCodes: 1,
+        totalQrCodes: 1,
+        eventsBreakdown: {
+          qrScans: 0,
+          assistancePageViews: 0,
+          aiDraftsGenerated: 0,
+          reviewsCopied: 0,
+          googleReviewClicks: 0
+        },
+        chartData: [
+          { date: new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), scans: 0, aiDrafts: 0, googleClicks: 0 }
+        ],
+        qrBreakdown: [],
+        recentActivity: []
+      };
+
+      setAnalytics(an || fallbackAnalytics);
+
       const bizQrs = qrs.filter((q: any) => q.businessId === bizId || !q.businessId);
       if (bizQrs.length > 0) {
         setPrimaryQr(bizQrs[0]);
+      } else if (currentBiz?.uniqueQrCode) {
+        setPrimaryQr({
+          id: `qr_${bizId}`,
+          businessId: bizId,
+          ownerUid: currentBiz.ownerUid || user?.uid || '',
+          name: currentBiz.businessName,
+          label: 'Primary Dynamic Stand',
+          uniqueCode: currentBiz.uniqueQrCode,
+          destinationUrl: currentBiz.googleReviewUrl || '',
+          routePath: `/r/${currentBiz.uniqueQrCode}`,
+          status: 'ACTIVE',
+          scanCount: currentBiz.scanCount || 0,
+          createdAt: currentBiz.createdAt || new Date().toISOString()
+        } as any);
       } else {
         setPrimaryQr(null);
       }
     } catch (err: any) {
       console.error('[Dashboard] Load error:', err);
+      if (isMounted) {
+        setError(err.message || 'Failed to load business dashboard.');
+      }
     } finally {
-      setLoading(false);
+      if (isMounted) {
+        setLoading(false);
+      }
     }
   };
 
   const handleAddBusiness = () => {
-    // Direct to pricing page - actual purchase happens there with Razorpay
     navigate('/app/pricing');
   };
 
   const handleSwitchToBusiness = async (bizId: string) => {
     await selectBusiness(bizId);
-    navigate(`/app/dashboard/${bizId}`);
+    navigate(`/app/shops/${bizId}/dashboard`);
   };
 
-  if (switching || (loading && !analytics)) {
+  // State C: Error State
+  if (error) {
+    return (
+      <div className="py-20 text-center space-y-4 max-w-md mx-auto">
+        <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+          <AlertCircle className="w-6 h-6" />
+        </div>
+        <div className="space-y-1">
+          <h3 className="font-bold text-slate-900 text-lg">Unable to load dashboard</h3>
+          <p className="text-sm text-slate-500 leading-relaxed">{error}</p>
+        </div>
+        <div className="flex items-center justify-center gap-3 pt-2">
+          <button
+            type="button"
+            onClick={() => displayBusiness && loadDashboardData(displayBusiness.id)}
+            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl cursor-pointer transition-colors shadow-xs"
+          >
+            Retry
+          </button>
+          <Link
+            to="/app/shops"
+            className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors"
+          >
+            View My Shops
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // State A: Loading State
+  if (authLoading || (loading && !displayBusiness) || switching) {
     return (
       <div className="py-24 text-center space-y-3">
         <RefreshCw className="w-8 h-8 animate-spin text-blue-600 mx-auto" />
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-slate-500 font-medium">
           {switching ? 'Switching business...' : 'Loading business dashboard...'}
         </p>
       </div>
     );
   }
 
+  // State: No Businesses Registered
   if (!displayBusiness) {
     return (
       <div className="py-24 text-center space-y-4">
         <Building2 className="w-10 h-10 text-slate-300 mx-auto" />
-        <p className="text-sm text-slate-500">No business loaded. Please select a business from the sidebar.</p>
-        <button
-          type="button"
-          onClick={() => navigate('/app/pricing')}
-          className="px-5 py-2.5 bg-blue-600 text-white text-xs font-bold rounded-xl cursor-pointer"
-        >
-          Add Your First Business
-        </button>
+        <h3 className="text-base font-bold text-slate-900">No Shops Found</h3>
+        <p className="text-sm text-slate-500 max-w-xs mx-auto">
+          You have not registered any shops yet. Create your first shop to get your AI review assistant.
+        </p>
+        <div className="flex items-center justify-center gap-3 pt-2">
+          <Link
+            to="/app/shops/create"
+            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-colors"
+          >
+            Register New Shop
+          </Link>
+          <Link
+            to="/app/pricing"
+            className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors"
+          >
+            View Plans
+          </Link>
+        </div>
       </div>
     );
   }

@@ -1,4 +1,5 @@
 import { auth } from './firebase.ts';
+import { fetchSingleShopFromFirestore } from './firestore-sync.ts';
 
 export interface BusinessCategoryInfo {
   id: string;
@@ -781,9 +782,38 @@ export const freshTestApi = {
   // Business Profile & Google URL Verification
   async getBusiness(businessId?: string): Promise<BusinessData | null> {
     const query = businessId ? `?businessId=${encodeURIComponent(businessId)}` : '';
-    const res = await fetch(`/api/business${query}`, { headers: getAuthHeaders() });
-    const data = await parseJsonResponse(res, 'Failed to load business details');
-    return data.business || null;
+    let apiBiz: any = null;
+    try {
+      const res = await fetch(`/api/business${query}`, { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await parseJsonResponse(res, 'Failed to load business details');
+        apiBiz = data.business || null;
+      }
+    } catch {}
+
+    // If API returned a valid business with confirmed completion, return it
+    if (apiBiz && apiBiz.businessName && (apiBiz.onboardingCompleted || apiBiz.onboardingStatus === 'COMPLETED')) {
+      return apiBiz;
+    }
+
+    // Direct Firestore fallback: Check genuine Firestore document
+    if (businessId && auth && auth.currentUser) {
+      try {
+        const fsBiz = await fetchSingleShopFromFirestore(businessId, auth.currentUser.uid);
+        if (fsBiz) {
+          return {
+            ...apiBiz,
+            ...fsBiz,
+            id: fsBiz.id || businessId,
+            shopId: fsBiz.shopId || fsBiz.id || businessId
+          };
+        }
+      } catch (fsErr) {
+        console.warn('[freshTestApi] Firestore direct getBusiness fallback notice:', fsErr);
+      }
+    }
+
+    return apiBiz || null;
   },
 
   async saveBusiness(input: Partial<BusinessData>, businessId?: string): Promise<BusinessData> {

@@ -55,12 +55,17 @@ export const OwnerAppLayout: React.FC<OwnerAppLayoutProps> = ({ children }) => {
   // Sync route shopId with active business
   useEffect(() => {
     if (currentRouteShopId && (!activeBusiness || activeBusiness.id !== currentRouteShopId)) {
-      const match = businesses.find(b => b.id === currentRouteShopId);
-      if (match) {
-        selectBusiness(currentRouteShopId);
+      const match = businesses.find(b => b.id === currentRouteShopId) ||
+        businesses.find(b => {
+          const normRoute = currentRouteShopId.toLowerCase().replace(/[^a-z0-9]/g, '').replace(/[li1]/g, '1').replace(/[o0]/g, '0');
+          const normB = b.id.toLowerCase().replace(/[^a-z0-9]/g, '').replace(/[li1]/g, '1').replace(/[o0]/g, '0');
+          return normRoute === normB;
+        });
+      if (match && (!activeBusiness || activeBusiness.id !== match.id)) {
+        selectBusiness(match.id);
       }
     }
-  }, [currentRouteShopId, activeBusiness, businesses, selectBusiness]);
+  }, [currentRouteShopId, activeBusiness?.id, businesses, selectBusiness]);
 
   // Click outside listener for dropdowns
   useEffect(() => {
@@ -88,7 +93,7 @@ export const OwnerAppLayout: React.FC<OwnerAppLayoutProps> = ({ children }) => {
   };
 
   // Determine effective active shop ID
-  const effectiveShopId = currentRouteShopId || activeBusiness?.id || (businesses[0]?.id || '');
+  const effectiveShopId = activeBusiness?.id || currentRouteShopId || (businesses[0]?.id || '');
   const cleanPath = (location.pathname.replace(/\/+$/, '') || '/').toLowerCase();
 
   // Part 2 EXACT 12 Navigation Items
