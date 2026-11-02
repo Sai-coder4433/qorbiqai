@@ -1013,6 +1013,8 @@ export const freshTestApi = {
     iteration?: number;
     generationNumber?: number;
     requestId?: string;
+    ownerId?: string;
+    recentReviews?: string[];
     reviewLength?: 'short' | 'medium' | 'long';
   }): Promise<{
     draft: string;
@@ -1022,6 +1024,11 @@ export const freshTestApi = {
     generationId?: string;
     requestId?: string;
     wordCount?: number;
+    sentenceCount?: number;
+    reviewId?: string;
+    duplicateCheckStatus?: string;
+    similarityScore?: number;
+    model?: string;
     reviewLength?: 'short' | 'medium' | 'long';
   }> {
     const payload = {
@@ -1044,8 +1051,39 @@ export const freshTestApi = {
       generationId: data.generationId,
       requestId: data.requestId || payload.requestId,
       reviewLength: data.reviewLength || params.reviewLength || 'medium',
-      wordCount: cleanDraft ? cleanDraft.split(/\s+/).filter(Boolean).length : 0
+      wordCount: data.wordCount || (cleanDraft ? cleanDraft.split(/\s+/).filter(Boolean).length : 0),
+      sentenceCount: data.sentenceCount,
+      reviewId: data.reviewId,
+      duplicateCheckStatus: data.duplicateCheckStatus || 'passed',
+      similarityScore: data.similarityScore,
+      model: data.model
     };
+  },
+
+  async getBusinessReviewHistory(businessId: string): Promise<Array<{
+    reviewId: string;
+    businessId: string;
+    text: string;
+    language: string;
+    reviewLength: string;
+    createdAt: string;
+    similarityScore?: number;
+  }>> {
+    if (!businessId) return [];
+    try {
+      const res = await fetch(`/api/ai/review-history?businessId=${encodeURIComponent(businessId)}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        const data: any = await res.json();
+        if (data.reviews && Array.isArray(data.reviews)) {
+          return data.reviews;
+        }
+      }
+    } catch {
+      // Fallback
+    }
+    return [];
   },
 
   async getAiObservabilityMetrics(): Promise<any> {

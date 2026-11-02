@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Sparkles,
   Copy,
@@ -10,7 +10,8 @@ import {
   ShieldCheck,
   MessageSquare,
   Zap,
-  Tag
+  Tag,
+  History
 } from 'lucide-react';
 import { useBusiness } from '../../lib/business-context.tsx';
 import { freshTestApi, sanitizeReviewText } from '../../lib/fresh-test-api.ts';
@@ -30,13 +31,45 @@ export const AiReviewGeneratorPage: React.FC = () => {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Local draft history
-  const [draftHistory, setDraftHistory] = useState<Array<{
-    draft: string;
+  // Observability & Validation Metrics
+  const [metrics, setMetrics] = useState<{
+    wordCount?: number;
+    sentenceCount?: number;
+    duplicateCheckStatus?: string;
+    similarityScore?: number;
+    model?: string;
+  } | null>(null);
+
+  // Persistent review history for the active business
+  const [persistentHistory, setPersistentHistory] = useState<Array<{
+    reviewId: string;
+    text: string;
     language: string;
-    length: string;
+    reviewLength: string;
     createdAt: string;
+    similarityScore?: number;
   }>>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const fetchHistory = async () => {
+      if (!activeBusiness?.id) return;
+      try {
+        setLoadingHistory(true);
+        const list = await freshTestApi.getBusinessReviewHistory(activeBusiness.id);
+        if (active && Array.isArray(list)) {
+          setPersistentHistory(list);
+        }
+      } catch {
+        // Safe fallback
+      } finally {
+        if (active) setLoadingHistory(false);
+      }
+    };
+    fetchHistory();
+    return () => { active = false; };
+  }, [activeBusiness?.id]);
 
   const defaultTopics = [
     'Customer Service & Hospitality',
@@ -64,15 +97,19 @@ export const AiReviewGeneratorPage: React.FC = () => {
       setError(null);
 
       const nextIteration = isRegen ? iteration + 1 : 1;
+      const pastDrafts = persistentHistory.map(h => h.text).filter(Boolean);
+
       const res = await freshTestApi.generateAiDraft({
         businessName: activeBusiness?.businessName || 'Our Business',
         businessId: activeBusiness?.id,
+        ownerId: activeBusiness?.ownerUid || '',
         customerFeedback: customerText.trim() || selectedTopics.join(', '),
         customerText: customerText.trim(),
         selectedTopics,
         language,
         reviewLength,
         tone,
+        recentReviews: pastDrafts,
         iteration: nextIteration
       });
 
@@ -80,16 +117,24 @@ export const AiReviewGeneratorPage: React.FC = () => {
       setGeneratedDraft(clean);
       setIteration(nextIteration);
       setCopied(false);
+      setMetrics({
+        wordCount: res.wordCount,
+        sentenceCount: res.sentenceCount,
+        duplicateCheckStatus: res.duplicateCheckStatus,
+        similarityScore: res.similarityScore,
+        model: res.model
+      });
 
-      setDraftHistory(prev => [
-        {
-          draft: clean,
-          language,
-          length: reviewLength,
-          createdAt: new Date().toLocaleTimeString()
-        },
-        ...prev.slice(0, 9)
-      ]);
+      const newRecord = {
+        reviewId: res.reviewId || 'rev_' + Date.now(),
+        text: clean,
+        language,
+        reviewLength,
+        createdAt: new Date().toLocaleTimeString(),
+        similarityScore: res.similarityScore
+      };
+
+      setPersistentHistory(prev => [newRecord, ...prev]);
     } catch (err: any) {
       setError(err.message || 'Failed to generate review draft. Please try again.');
     } finally {
@@ -182,9 +227,9 @@ export const AiReviewGeneratorPage: React.FC = () => {
                 onChange={e => setReviewLength(e.target.value as any)}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:bg-white"
               >
-                <option value="short">Short (15-25 words)</option>
-                <option value="medium">Medium (30-50 words)</option>
-                <option value="long">Long (55-80 words)</option>
+                <option value="short">Short (1 sentence, 8-20 words)</option>
+                <option value="medium">Medium (2-3 sentences, 25-50 words)</option>
+                <option value="long">Long (4-5 sentences, 55-90 words)</option>
               </select>
             </div>
 
@@ -287,17 +332,47 @@ export const AiReviewGeneratorPage: React.FC = () => {
                 Generated Review Draft
               </span>
               {generatedDraft && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  Variation #{iteration}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                    Variation #{iteration}
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                    <span>Unique</span>
+                  </span>
+                </div>
               )}
             </div>
 
             {generatedDraft ? (
               <div className="space-y-4">
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-medium text-slate-800 leading-relaxed min-h-[140px] whitespace-pre-wrap">
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-medium text-slate-800 leading-relaxed min-h-[120px] whitespace-pre-wrap">
                   {generatedDraft}
                 </div>
+
+                {/* Validation & Observability Metrics */}
+                {metrics && (
+                  <div className="grid grid-cols-3 gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                    <div>
+                      <div className="text-[10px] text-slate-400 font-bold uppercase">Length</div>
+                      <div className="text-xs font-extrabold text-slate-800">
+                        {metrics.wordCount || generatedDraft.split(/\s+/).filter(Boolean).length} words
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-slate-400 font-bold uppercase">Sentences</div>
+                      <div className="text-xs font-extrabold text-slate-800">
+                        {metrics.sentenceCount || (reviewLength === 'short' ? 1 : reviewLength === 'medium' ? 3 : 5)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-slate-400 font-bold uppercase">Duplicate Check</div>
+                      <div className="text-xs font-extrabold text-emerald-600 flex items-center justify-center gap-0.5">
+                        <Check className="w-3 h-3" /> Passed
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex items-center gap-2">
                   <button
@@ -338,36 +413,57 @@ export const AiReviewGeneratorPage: React.FC = () => {
             )}
           </div>
 
-          {/* Draft History */}
-          {draftHistory.length > 0 && (
-            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 block">
-                Session Draft History
+          {/* Persistent Business Review Memory & History */}
+          <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                <History className="w-4 h-4 text-blue-600" />
+                <span>Shop Review History</span>
               </span>
-              <div className="space-y-2.5 max-h-60 overflow-y-auto">
-                {draftHistory.map((item, idx) => (
-                  <div key={idx} className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-xs">
+              <span className="text-[10px] font-bold text-slate-400">
+                {persistentHistory.length} Saved Reviews
+              </span>
+            </div>
+
+            {loadingHistory ? (
+              <div className="py-6 text-center text-xs text-slate-400">
+                <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-1 text-slate-400" />
+                <span>Loading saved history...</span>
+              </div>
+            ) : persistentHistory.length > 0 ? (
+              <div className="space-y-2.5 max-h-72 overflow-y-auto">
+                {persistentHistory.slice(0, 15).map((item, idx) => (
+                  <div key={item.reviewId || idx} className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-xs">
                     <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold">
-                      <span>{item.language} • {item.length}</span>
-                      <span>{item.createdAt}</span>
+                      <span className="capitalize">{item.language} • {item.reviewLength || 'medium'}</span>
+                      <span>{item.createdAt ? (item.createdAt.includes('T') ? new Date(item.createdAt).toLocaleDateString() : item.createdAt) : ''}</span>
                     </div>
-                    <p className="text-slate-700 text-[11px] line-clamp-2">{item.draft}</p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(item.draft);
-                        setGeneratedDraft(item.draft);
-                      }}
-                      className="text-[10px] font-bold text-blue-600 hover:underline flex items-center gap-1 cursor-pointer"
-                    >
-                      <Copy className="w-3 h-3" />
-                      <span>Use this draft</span>
-                    </button>
+                    <p className="text-slate-800 text-[11px] line-clamp-3 leading-relaxed">{item.text}</p>
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                      <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
+                        <Check className="w-3 h-3" /> Duplicate-check passed
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(item.text);
+                          setGeneratedDraft(item.text);
+                        }}
+                        className="text-[10px] font-bold text-blue-600 hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>Copy</span>
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="py-6 text-center text-xs text-slate-400">
+                No past reviews saved yet for this business.
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

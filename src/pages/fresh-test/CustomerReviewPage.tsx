@@ -43,6 +43,7 @@ export const CustomerReviewPage: React.FC = () => {
   const [generationNumber, setGenerationNumber] = useState(1);
   const [hasGenerated, setHasGenerated] = useState(false);
   const [wordCount, setWordCount] = useState(0);
+  const [sessionReviews, setSessionReviews] = useState<string[]>([]);
 
   // Copy Feedback (Section 32)
   const [copied, setCopied] = useState(false);
@@ -148,7 +149,8 @@ export const CustomerReviewPage: React.FC = () => {
         uniqueCode: activeCode,
         sessionId: sessionId || undefined,
         generationNumber: nextGenNumber,
-        iteration: nextGenNumber
+        iteration: nextGenNumber,
+        recentReviews: sessionReviews
       });
 
       const cleanDraft = sanitizeReviewText(result.draft || '');
@@ -157,6 +159,7 @@ export const CustomerReviewPage: React.FC = () => {
       }
 
       setGeneratedDraft(cleanDraft);
+      setSessionReviews(prev => [cleanDraft, ...prev]);
       setGenerationNumber(nextGenNumber);
       if (result.sessionId) {
         setSessionId(result.sessionId);
